@@ -14,10 +14,16 @@ from scipy import stats
 import os
 import time
 from datetime import datetime
+import setting
 
 
-def run_eval(data):
+def run_eval(data, loss):
         
+    def plot_loss(loss):
+        plt.figure(figsize=(7,4))
+        plt.plot(loss)
+        plt.savefig(res_dir + 'loss.jpg',dpi = 100)
+    
     def tag_conc_rate_and_diff_mean(dt):
         for v in action_types:
             dt[v + '_conc_rate'] = dt[v + '_conc'].mean()
@@ -309,7 +315,7 @@ def run_eval(data):
     stratify_col = 'SOFA_level'
     data[stratify_col] = (data['ori_sofatotal'] <= 6)+0 
     
-    res_dir = 'result/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '/'
+    res_dir = 'result/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '_' + setting.REWARD_FUN + '/'
     if os.path.isdir(res_dir) == False:
         os.makedirs(res_dir)            
     action_distribution3(data)
@@ -317,6 +323,7 @@ def run_eval(data):
     res_dt = q_vs_motality(data)
     q_dr_dt = quantitive_eval(data, res_dt) 
     conc_dt = action_concordant_rate(data) 
+    plot_loss(loss)
     print (q_dr_dt)
     print (conc_dt)
     

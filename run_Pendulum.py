@@ -15,43 +15,34 @@ import random
 import logging
 import argparse
 import tensorflow as tf
+import setting
 
 from RL_brain import DuelingDQN
 # from evaluation import Evaluation
 from evaluation_new import *
 
+# setting
+state_col = setting.state_col
+next_state_col = setting.next_state_col
+action_dis_col = setting.action_dis_col
+ITERATION_ROUND = setting.ITERATION_ROUND
+ACTION_SPACE = setting.ACTION_SPACE
+BATCH_SIZE = setting.BATCH_SIZE
+SEED = setting.SEED
+REWARD_FUN = setting.REWARD_FUN
 
-state_col = ['heartrate', 'respiratoryrate', 'spo2', 'temperature', 'sbp', 'dbp', 'lactate',
-             'bicarbonate', 'wbc', 'pao2', 'paco2', 'pH', 'gcs', 'intaketotal', 'nettotal',
-             'urineoutput', 'med_sedation', 'med_neuromuscular_blocker', 'age', 'gender',
-             'apache_iv', 'admissionweight', 'sofatotal', 'equivalent_mg_4h']
-next_state_col = ['next_heartrate', 'next_respiratoryrate', 'next_spo2', 'next_temperature',
-                  'next_sbp', 'next_dbp', 'next_lactate', 'next_bicarbonate', 'next_wbc',
-                  'next_pao2', 'next_paco2', 'next_pH', 'next_gcs', 'next_intaketotal',
-                  'next_nettotal', 'next_urineoutput', 'next_med_sedation', 'next_med_neuromuscular_blocker',
-                  'next_age', 'next_gender', 'next_apache_iv', 'next_admissionweight', 'next_sofatotal', 'next_equivalent_mg_4h']
-action_dis_col = ['PEEP_level', 'FiO2_level', 'Tidal_level']
-reward_col = ['ori_spo2', 'next_ori_spo2', 'hosp_mort']
-
-
-MEMORY_SIZE = 249579
-ACTION_SPACE = 18# 27
-STATE_DIM = len(state_col) # 24
-BATCH_SIZE = 256
-EPISODE = int(MEMORY_SIZE / BATCH_SIZE * 5)  # 遍历数据5轮。42w/256*5 = 8203
-np.random.seed(1)
-tf.set_random_seed(1)
-random.seed(1)
+# drive
+STATE_DIM = len(state_col) # 23 
+np.random.seed(SEED)
+tf.set_random_seed(SEED)
+random.seed(SEED)
 
 def train(RL, data, first_run=True):
     if first_run:
         # reward function
-        data['reward'] = data.apply(lambda x: -1 if (x['done'] == 1 and x['hosp_mort'] == 1) else
-                                            1  if (x['done'] == 1 and x['hosp_mort'] == 0) else
-                                            0  if x['done'] == 0 else
-                                            np.nan ,axis = 1)
+        data['reward'] = data.apply(eval('setting.' + REWARD_FUN) , axis = 1)
         
-        actions = data.apply(lambda x: action2onehot(x[action_dis_col]), axis =1)
+        actions = data.apply(lambda x: x[action_dis_col[0]] * 9 + x[action_dis_col[1]] * 3 + x[action_dis_col[2]], axis =1)
         
         memory_array = np.concatenate([np.array(data[state_col]), 
                                     np.array(actions).reshape(-1, 1), 
@@ -68,19 +59,22 @@ def train(RL, data, first_run=True):
     RL.store_transition(memory_array)
     
     print('\nSTART TRAINING\n')
+    EPISODE = int(MEMORY_SIZE / BATCH_SIZE * ITERATION_ROUND)
     for i in tqdm(range(EPISODE)):
         RL.learn(i)
+    loss = RL.cost_his
+    return loss
 
 
-def action2onehot(action):
-    # just like a Ternary conversion
-    peep, fio2, tidal = 1 if action[0] == 2 else 0, action[1], action[2]
-    index = 9 * int(peep) + 3 * int(fio2) + int(tidal)
+# def action2onehot(action):
+#     # just like a Ternary conversion
+#     peep, fio2, tidal = action[0], action[1], action[2]
+#     index = 9 * int(peep) + 3 * int(fio2) + int(tidal)
     
-    # action_vector = np.zeros(27, dtype=int)
-    # action_vector[index] = 1
+#     action_vector = np.zeros(27, dtype=int)
+#     action_vector[index] = 1
 
-    return index
+#     return index
 
 def print_num_of_total_parameters(output_detail=False, output_to_logging=False):
     total_parameters = 0
@@ -115,10 +109,16 @@ if __name__ == "__main__":
     
     # read data
     data = pd.read_csv('data/data_rl_with_dose.csv')
+    if len(data['PEEP_level'].unique()) == 3:
+        data['PEEP_level'] = data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
+
     # data = pd.read_csv('../../data_rl.csv')
     data.fillna(0, inplace=True)
     print('\nLOAD DATA DONE!\n')
     print('data.shape', data.shape)
+    
+    MEMORY_SIZE = len(data)
+    
     # data = data.iloc[:MEMORY_SIZE]
     
     # split train and test set
@@ -136,8 +136,7 @@ if __name__ == "__main__":
         sess.run(tf.global_variables_initializer())
         print_num_of_total_parameters(True, False)
         
-        train(dueling_DQN, data, args.first_run)
-        
+        loss = train(dueling_DQN, data, args.first_run)
         # save model
         saver = tf.train.Saver()
         saver.save(sess, 'models/duel_DQN')
@@ -162,4 +161,4 @@ if __name__ == "__main__":
     
     
     # eval = Evaluation()
-    run_eval(result)
+    run_eval(result, loss)

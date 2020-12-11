@@ -7,12 +7,12 @@ Using:
 Tensorflow: 1.0
 gym: 0.8.0
 """
-
+import setting
 import numpy as np
 import tensorflow as tf
 
-np.random.seed(1)
-tf.set_random_seed(1)
+np.random.seed(setting.SEED)
+tf.set_random_seed(setting.SEED)
 
 
 class DuelingDQN:
