@@ -72,7 +72,10 @@ def run_eval(data, loss):
             plt.xlabel(v+' action taken')
             if i == 0:
                 plt.ylabel('Counts')
-            plt.xticks(x_s_,['Low','Med','High'],size = 9)
+            if len(x_s_) == 3:
+                plt.xticks(x_s_,['Low','Med','High'],size = 9)
+            else:
+                plt.xticks(x_s_,['Low','High'],size = 9)
         
         plt.legend(['Phys policy','AI policy'])
         # plt.title('Action counts of Phys & AI policy')

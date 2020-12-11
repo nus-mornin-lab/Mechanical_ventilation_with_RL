@@ -5,7 +5,6 @@ View more on my tutorial page: https://morvanzhou.github.io/tutorials/
 
 Using:
 Tensorflow: 1.0
-gym: 0.8.0
 """
 
 import pandas as pd
@@ -43,7 +42,6 @@ def train(RL, data, first_run=True):
         data['reward'] = data.apply(eval('setting.' + REWARD_FUN) , axis = 1)
         
         actions = data.apply(lambda x: x[action_dis_col[0]] * 9 + x[action_dis_col[1]] * 3 + x[action_dis_col[2]], axis =1)
-        
         memory_array = np.concatenate([np.array(data[state_col]), 
                                     np.array(actions).reshape(-1, 1), 
                                     np.array(data['reward']).reshape(-1, 1), 
@@ -104,26 +102,26 @@ def print_num_of_total_parameters(output_detail=False, output_to_logging=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', '-m', type=str, required=True)
-    parser.add_argument('--first_run', '-f', type=bool, required=True)
+    parser.add_argument('--data', '-d', type=str, required=True)
     args = parser.parse_args()
+    first_run = True
     
     # read data
-    data = pd.read_csv('data/data_rl_with_dose.csv')
+    # data = pd.read_csv('data/data_rl_with_dose.csv')
+    if args.data == 'eicu':
+        data = pd.read_csv('data/data_rl_with_dose.csv')
+    elif args.data == 'mimic':
+        data = pd.read_csv('data/mimic_data_rl_with_dose.csv')
+        data['gender'] = data['gender'].apply(lambda x: 0 if (x == 'F' or x == 0)  else 1) # 男-1， 女-0
+        
     if len(data['PEEP_level'].unique()) == 3:
         data['PEEP_level'] = data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
 
-    # data = pd.read_csv('../../data_rl.csv')
     data.fillna(0, inplace=True)
     print('\nLOAD DATA DONE!\n')
     print('data.shape', data.shape)
     
     MEMORY_SIZE = len(data)
-    
-    # data = data.iloc[:MEMORY_SIZE]
-    
-    # split train and test set
-    # length = data.shape[0]
-    # train_data, test_data = data[:int(length*0.8)], data[int(length*0.8):]
 
     if args.mode == 'train':
         # init model
@@ -136,15 +134,15 @@ if __name__ == "__main__":
         sess.run(tf.global_variables_initializer())
         print_num_of_total_parameters(True, False)
         
-        loss = train(dueling_DQN, data, args.first_run)
+        loss = train(dueling_DQN, data, first_run)
         # save model
         saver = tf.train.Saver()
         saver.save(sess, 'models/duel_DQN')
         
     elif args.mode == 'eval':
         sess = tf.Session()
-        new_saver = tf.train.import_meta_graph('../model/model_LR_test.meta')
-        new_saver.restore(sess,'../model/model_LR_test')#加载模型中各种变量的值，注意这里不用文件的后缀 
+        new_saver = tf.train.import_meta_graph('models/duel_DQN.meta')
+        new_saver.restore(sess, 'models/duel_DQN')#加载模型中各种变量的值，注意这里不用文件的后缀 
 
     # evaluate model
     eval_q = sess.run(dueling_DQN.q_eval, feed_dict={dueling_DQN.s: data[state_col]})
