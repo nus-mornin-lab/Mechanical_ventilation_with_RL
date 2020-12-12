@@ -20,10 +20,9 @@ import setting
 def run_eval(data, loss, datatype, SEED = setting.SEED):
 
     def plot_loss(loss):
-        if loss:
-            plt.figure(figsize=(7,4))
-            plt.plot(loss)
-            plt.savefig(res_dir + 'loss.jpg',dpi = 100)
+        plt.figure(figsize=(7,4))
+        plt.plot(loss)
+        plt.savefig(res_dir + 'loss.jpg',dpi = 100)
         
     def tag_conc_rate_and_diff_mean(dt):
         for v in action_types:
@@ -119,7 +118,7 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
         plt.tight_layout()
         plt.savefig(res_dir + 'stratified_action_distribution3.jpg',dpi = 200)        
     
-    def diff_vs_outcome(data, outcome_col1 = 'hosp_mort',outcome_col2 = 'spo2_reach', bootstrap_round = 500):
+    def diff_vs_outcome(data, outcome_col1 = 'hosp_mort',outcome_col2 = 'spo2_reach',outcome_col3 = 'mbp_reach', bootstrap_round = 500):
     
     # vs_motality
         data = data.reset_index(drop = True).copy()
@@ -127,15 +126,18 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
         x_s = {}
         res = {}
         res_ = {}
+        res__ = {}
         for v in action_types:
             x_s[v] = sorted(set(data[v + '_diff']))
             res[v] = {}
             res_[v] = {}
+            res__[v] = {}
             for k in x_s[v]:
                 res[v][k] = []
                 res_[v][k] = []
+                res__[v][k] = []
             
-        used_data = data[[v + '_diff' for v in action_types] + [outcome_col1, outcome_col2 ]]
+        used_data = data[[v + '_diff' for v in action_types] + [outcome_col1, outcome_col2, outcome_col3 ]]
         for i in range(bootstrap_round):
             if i%10 == 0:
                 print ('bootstrap 4-hour level: ' + str(i) + '...')
@@ -147,10 +149,11 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
                 # v = 'PEEP'
                 diff_col = v + '_diff'
                 # aa = used_data.loc[df_index].groupby(diff_col).apply(lambda dt: dt[outcome_col1].mean())
-                aa1 = used_data.loc[df_index].groupby(diff_col).apply(lambda dt: dt[[outcome_col1,outcome_col2]].mean())
+                aa1 = used_data.loc[df_index].groupby(diff_col).apply(lambda dt: dt[[outcome_col1,outcome_col2,outcome_col3]].mean())
                 for k in x_s[v]:
                     res[v][k].append(aa1.loc[k,outcome_col1])
                     res_[v][k].append(aa1.loc[k,outcome_col2])
+                    res__[v][k].append(aa1.loc[k,outcome_col3])
             
         # patient level 
         x_s_a = {}
@@ -223,9 +226,10 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
         plot_vs_outcome(x_s_b, res_b, 'Concordant rate','Motality', 'conc_vs_motality','green')
         
         plot_vs_outcome(x_s, res_, 'Model action - Phys action','spo2_reach', 'diff4h_vs_spo2reach', 'pink')
+        plot_vs_outcome(x_s, res__, 'Model action - Phys action','mbp_reach', 'diff4h_vs_mbpreach', 'lightblue')
 
 
-    def q_vs_outcome(data, outcome_col1 = 'hosp_mort', outcome_col2 = 'spo2_reach'):
+    def q_vs_outcome(data, outcome_col1 = 'hosp_mort', outcome_col2 = 'spo2_reach', outcome_col3 = 'mbp_reach'):
         # Q_vs_motality    
         # data[phys_Q] = [random.uniform(-10,10) for i in range(len(data))]
         data = data.reset_index(drop = True).copy()    
@@ -244,8 +248,8 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
             res_025_Q.append(bb[k][0] - bb[k][1])
             res_975_Q.append(bb[k][0] + bb[k][1])
         plt.figure(figsize=(6,4))
-        line1, = plt.plot(Q_s,res_500_Q, color='blue', lw=1.5, ls='-', ms=4)
-        plt.fill_between(Q_s,res_025_Q, res_975_Q, color='blue', alpha=0.6)
+        line1, = plt.plot(Q_s,res_500_Q, color='red', lw=1.5, ls='-', ms=4)
+        plt.fill_between(Q_s,res_025_Q, res_975_Q, color='red', alpha=0.6)
         # plt.xticks(Q_s)
         # plt.grid()
         plt.xlabel('Return of actions')
@@ -268,8 +272,8 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
             res_025_Q.append(bb[k][0] - bb[k][1])
             res_975_Q.append(bb[k][0] + bb[k][1])
         plt.figure(figsize=(6,4))
-        line1, = plt.plot(Q_s,res_500_Q, color='lightblue', lw=1.5, ls='-', ms=4)
-        plt.fill_between(Q_s,res_025_Q, res_975_Q, color='lightblue', alpha=0.6)
+        line1, = plt.plot(Q_s,res_500_Q, color='pink', lw=1.5, ls='-', ms=4)
+        plt.fill_between(Q_s,res_025_Q, res_975_Q, color='pink', alpha=0.6)
         # plt.xticks(Q_s)
         # plt.grid()
         plt.xlabel('Return of actions')
@@ -280,10 +284,34 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
         res_dt_ = pd.DataFrame()
         res_dt_['bb'] = bb
         res_dt_['rr'] = res_dt_['bb'].apply(lambda x: str(round(x[0]*100,1)) + '+-' + str(round(x[1]*100,1)) + '%')
+
+        # q vs mbp_reach #####################
+        bb = data.groupby(phys_Q + '_discre').apply(lambda dt: [dt[outcome_col3].mean(),dt[outcome_col3].sem()])
         
-        return res_dt, res_dt_
+        res_025_Q = []
+        res_500_Q = []
+        res_975_Q = []
+        for k in Q_s:
+            res_500_Q.append(bb[k][0])
+            res_025_Q.append(bb[k][0] - bb[k][1])
+            res_975_Q.append(bb[k][0] + bb[k][1])
+        plt.figure(figsize=(6,4))
+        line1, = plt.plot(Q_s,res_500_Q, color='lightblue', lw=1.5, ls='-', ms=4)
+        plt.fill_between(Q_s,res_025_Q, res_975_Q, color='lightblue', alpha=0.6)
+        # plt.xticks(Q_s)
+        # plt.grid()
+        plt.xlabel('Return of actions')
+        plt.ylabel('mbp reach prob')
+        
+        plt.savefig(res_dir + 'q_vs_mbp.jpg',dpi = 200)
+        
+        res_dt__ = pd.DataFrame()
+        res_dt__['bb'] = bb
+        res_dt__['rr'] = res_dt__['bb'].apply(lambda x: str(round(x[0]*100,1)) + '+-' + str(round(x[1]*100,1)) + '%')
+        
+        return res_dt, res_dt_, res_dt__
     
-    def quantitive_eval(data,res_dt,res_dt_, outcome_col = 'hosp_mort'):
+    def quantitive_eval(data,res_dt,res_dt_,res_dt__, outcome_col = 'hosp_mort'):
         data['Random_action'] = [random.randrange(action_num) for i in range(len(data))]
         cc = data[phys_action].value_counts()
         data['One-size-fit-all_action'] = cc.index[np.argmax(cc)]
@@ -304,6 +332,7 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
         for mod in ['ai','phys','Random','One-size-fit-all']:
             q_dr_dt.loc[mod,'deathrate'] = res_dt.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'] , res_dt),'dr']
             q_dr_dt.loc[mod,'spo2reachrate'] = res_dt_.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'], res_dt_),'rr']
+            q_dr_dt.loc[mod,'mbpreachrate'] = res_dt_.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'], res_dt__),'rr']
         q_dr_dt.to_csv(res_dir + 'qmean_and_deathreachrate.csv', encoding = 'gb18030')
             
         return q_dr_dt
@@ -331,6 +360,8 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
     ai_action = 'ai_action'
     
     data['spo2_reach'] = data['next_ori_spo2'].apply(lambda x: (x >= 94 and x <= 98)+0 )
+    data['mbp_reach'] = data['next_ori_mbp'].apply(lambda x: (x >= 70 and x <= 80)+0 )
+    
     if phys_action not in data.columns.tolist():
         data[phys_action] = data.apply(lambda x: int(x[action_types[0]+'_level']*9 + x[action_types[1]+'_level']*3 + x[action_types[2]+'_level']),axis = 1)
     data['ai_Q'] = np.max(data[Q_list],axis = 1)
@@ -362,8 +393,8 @@ def run_eval(data, loss, datatype, SEED = setting.SEED):
         os.makedirs(res_dir)            
     action_distribution3(data)
     diff_vs_outcome(data)
-    res_dt,res_dt_ = q_vs_outcome(data)
-    q_dr_dt = quantitive_eval(data, res_dt,res_dt_) 
+    res_dt,res_dt_,res_dt__ = q_vs_outcome(data)
+    q_dr_dt = quantitive_eval(data, res_dt,res_dt_,res_dt__) 
     conc_dt = action_concordant_rate(data) 
     plot_loss(loss)
     print (q_dr_dt)
