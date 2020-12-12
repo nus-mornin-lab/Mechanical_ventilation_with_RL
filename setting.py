@@ -86,9 +86,9 @@ def reward_mortality_spo2_mbp(x):
     elif (x['done'] == 1 and x['hosp_mort'] == 0):
         res += 2
     elif x['done'] == 0:
-        if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_spo2'] >= 94 and x['next_spo2'] <= 98):
+        if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
             res += 1
-        elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_spo2'] < 94 or x['next_spo2'] > 98):
+        elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
             res -= 1
         if (x['ori_mbp'] < 70 or x['ori_mbp'] > 80) and (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
             res += 0.5
