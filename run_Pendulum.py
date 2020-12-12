@@ -113,7 +113,7 @@ if __name__ == "__main__":
         if len(data['PEEP_level'].unique()) == 3:
             data['PEEP_level'] = data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
     elif args.data == 'mimic':
-        data = pd.read_csv('data/mimic_data_rl_with_dose_11Dec.csv')
+        data = pd.read_csv('data/mimic_v2_data_rl.csv')
         data['gender'] = data['gender'].apply(lambda x: 0 if (x == 'F' or x == 0)  else 1) # 男-1， 女-0
 
     data.fillna(0, inplace=True)
