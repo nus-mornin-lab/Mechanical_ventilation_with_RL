@@ -49,7 +49,6 @@ def train(RL, data, first_run=True):
                                     np.array(data[next_state_col])] ,
                                     axis = 1)
         np.save('memory.npy', memory_array)
-        
     else:
         memory_array = np.load(memory_array)
 
@@ -103,6 +102,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', '-m', type=str, required=True)
     parser.add_argument('--data', '-d', type=str, required=True)
+    parser.add_argument('--eval_model', '-e', type=str, required=False)
     args = parser.parse_args()
     first_run = True
     
@@ -110,12 +110,11 @@ if __name__ == "__main__":
     # data = pd.read_csv('data/data_rl_with_dose.csv')
     if args.data == 'eicu':
         data = pd.read_csv('data/data_rl_with_dose.csv')
+        if len(data['PEEP_level'].unique()) == 3:
+            data['PEEP_level'] = data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
     elif args.data == 'mimic':
-        data = pd.read_csv('data/mimic_data_rl_with_dose.csv')
+        data = pd.read_csv('data/mimic_data_rl_with_dose_11Dec.csv')
         data['gender'] = data['gender'].apply(lambda x: 0 if (x == 'F' or x == 0)  else 1) # 男-1， 女-0
-        
-    if len(data['PEEP_level'].unique()) == 3:
-        data['PEEP_level'] = data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
 
     data.fillna(0, inplace=True)
     print('\nLOAD DATA DONE!\n')
@@ -132,31 +131,40 @@ if __name__ == "__main__":
                 batch_size=BATCH_SIZE, e_greedy_increment=0.001, sess=sess, dueling=True, output_graph=True)
 
         sess.run(tf.global_variables_initializer())
-        print_num_of_total_parameters(True, False)
+        # print_num_of_total_parameters(True, False)
         
         loss = train(dueling_DQN, data, first_run)
         # save model
         saver = tf.train.Saver()
-        saver.save(sess, 'models/duel_DQN')
+        tf.add_to_collection("eval_q", dueling_DQN.q_eval)
+        saver.save(sess, 'models/duel_DQN_'+args.data)
+        
+        # evaluate model
+        eval_q = sess.run(dueling_DQN.q_eval, feed_dict={dueling_DQN.s: data[state_col]})
+        print(np.where(eval_q<0))
         
     elif args.mode == 'eval':
+        loss = None
         sess = tf.Session()
-        new_saver = tf.train.import_meta_graph('models/duel_DQN.meta')
-        new_saver.restore(sess, 'models/duel_DQN')#加载模型中各种变量的值，注意这里不用文件的后缀 
+        new_saver = tf.train.import_meta_graph('models/duel_DQN_'+args.eval_model+'.meta')
+        new_saver.restore(sess, 'models/duel_DQN_'+args.eval_model)#加载模型中各种变量的值，注意这里不用文件的后缀 
+        
+        pred_q_eval = tf.get_collection('eval_q')[0]
+        graph = tf.get_default_graph() 
+        # graph_op = graph.get_operations()
+        # for i in graph_op:
+        #     print(i)
+        
+        s = graph.get_operation_by_name('dueling/s').outputs[0]#为了将placeholder加载出来
 
-    # evaluate model
-    eval_q = sess.run(dueling_DQN.q_eval, feed_dict={dueling_DQN.s: data[state_col]})
-    print(np.where(eval_q<0))
+        eval_q = sess.run(pred_q_eval,feed_dict = {s: data[state_col]})    
+        
+    print(eval_q.shape, type(eval_q))
+    print(eval_q)
     
     result_array = np.concatenate([data.values, eval_q], axis=1)
     result = pd.DataFrame(result_array, 
                           columns=list(data.columns)+['Q_0', 'Q_1', 'Q_2', 'Q_3', 'Q_4', 'Q_5', 'Q_6', 'Q_7', 'Q_8', 'Q_9', 'Q_10', 'Q_11', 'Q_12', 'Q_13', 'Q_14', 'Q_15', 'Q_16', 'Q_17'])
-                          # columns=list(data.columns)+['Q_0', 'Q_1', 'Q_2', 'Q_3', 'Q_4', 'Q_5', 'Q_6', 'Q_7', 'Q_8', 'Q_9', 'Q_10', 'Q_11', 'Q_12', 'Q_13', 'Q_14', 'Q_15', 'Q_16', 'Q_17', 'Q_18', 'Q_19', 'Q_20', 'Q_21', 'Q_22', 'Q_23', 'Q_24', 'Q_25', 'Q_26'])
-    # result.to_csv('result.csv')
-    
-    print(eval_q.shape, type(eval_q))
-    print(eval_q)
-    
     
     # eval = Evaluation()
     run_eval(result, loss)
