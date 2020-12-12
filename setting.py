@@ -54,9 +54,9 @@ def reward_only_long_positive(x):
 def reward_short_long_spo2(x):
     res = 0
     if (x['done'] == 1 and x['hosp_mort'] == 1):
-        res += -10
+        res += -50
     elif (x['done'] == 1 and x['hosp_mort'] == 0):
-        res += 10
+        res += 50
     elif x['done'] == 0:
         if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
             res += 2
@@ -90,9 +90,9 @@ def reward_mortality_spo2_mbp(x):
             res += 1
         elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_spo2'] < 94 or x['next_spo2'] > 98):
             res -= 1
-        if (x['ori_mbp'] < 70 or x['ori_mbp'] > 80) and (x['next_mbp'] >= 70 and x['next_mbp'] <= 80):
+        if (x['ori_mbp'] < 70 or x['ori_mbp'] > 80) and (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
             res += 0.5
-        elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_mbp'] < 70 or x['next_mbp'] > 80):
+        elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] < 70 or x['next_ori_mbp'] > 80):
             res -= 0.5
     else:
         res = np.nan

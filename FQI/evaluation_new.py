@@ -17,7 +17,7 @@ from datetime import datetime
 import setting
 
 
-def run_eval(data, loss, datatype, SEED = settings.SEED):
+def run_eval(data, loss, datatype, SEED = setting.SEED):
 
     def plot_loss(loss):
         if loss:
