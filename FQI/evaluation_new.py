@@ -20,9 +20,10 @@ import setting
 def run_eval(data, loss, datatype, SEED = setting.SEED):
 
     def plot_loss(loss):
-        plt.figure(figsize=(7,4))
-        plt.plot(loss)
-        plt.savefig(res_dir + 'loss.jpg',dpi = 100)
+        if loss:
+            plt.figure(figsize=(7,4))
+            plt.plot(loss)
+            plt.savefig(res_dir + 'loss.jpg',dpi = 100)
         
     def tag_conc_rate_and_diff_mean(dt):
         for v in action_types:

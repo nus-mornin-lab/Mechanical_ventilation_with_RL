@@ -107,9 +107,8 @@ if __name__ == "__main__":
     first_run = True
     
     # read data
-    # data = pd.read_csv('data/data_rl_with_dose.csv')
     if args.data == 'eicu':
-        data = pd.read_csv('data/data_rl_with_dose.csv')
+        data = pd.read_csv('data/eICU_v2_data_rl.csv')
         if len(data['PEEP_level'].unique()) == 3:
             data['PEEP_level'] = data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
     elif args.data == 'mimic':
@@ -127,7 +126,7 @@ if __name__ == "__main__":
         sess = tf.Session()
         with tf.variable_scope('dueling'):
             dueling_DQN = DuelingDQN(
-                n_actions=ACTION_SPACE, n_features=STATE_DIM, memory_size=MEMORY_SIZE,
+                n_actions=ACTION_SPACE, n_features=STATE_DIM, memory_size=MEMORY_SIZE, reward_decay=0.99,
                 batch_size=BATCH_SIZE, e_greedy_increment=0.001, sess=sess, dueling=True, output_graph=True)
 
         sess.run(tf.global_variables_initializer())
@@ -167,4 +166,4 @@ if __name__ == "__main__":
                           columns=list(data.columns)+['Q_0', 'Q_1', 'Q_2', 'Q_3', 'Q_4', 'Q_5', 'Q_6', 'Q_7', 'Q_8', 'Q_9', 'Q_10', 'Q_11', 'Q_12', 'Q_13', 'Q_14', 'Q_15', 'Q_16', 'Q_17'])
     
     # eval = Evaluation()
-    run_eval(result, loss)
+    run_eval(result, loss, args.data, SEED)
