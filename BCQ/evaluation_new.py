@@ -17,7 +17,7 @@ from datetime import datetime
 import setting
 import json
 
-def run_eval(data, loss, datatype, SEED = setting.SEED, mode = 'train', parameters = {},val_str = 'val', val_res = pd.DataFrame()):
+def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train', parameters = {},val_str = 'val', val_res = pd.DataFrame(), TIME_RANGE = '24h'):
 
     def plot_loss(loss):
         if loss:
@@ -242,7 +242,7 @@ def run_eval(data, loss, datatype, SEED = setting.SEED, mode = 'train', paramete
         # data[phys_Q] = [random.uniform(-10,10) for i in range(len(data))]
         data = data.reset_index(drop = True).copy()    
         
-        data[phys_Q + '_discre'] = data[phys_Q].apply(lambda x: round(x,2))
+        data[phys_Q + '_discre'] = data[phys_Q].apply(lambda x: round(x,1))
         Q_s = sorted(set(data[phys_Q + '_discre']))
        
         # q vs motality #####################
@@ -354,11 +354,13 @@ def run_eval(data, loss, datatype, SEED = setting.SEED, mode = 'train', paramete
             
         conc_dt.loc['all', 'concordant_rate'] = str(round(np.mean(data[phys_action] == data[ai_action])*100,1)) + '%'
         
-        v_cwpdis, ess = cwpdis_ess_eval(data)
+        v_cwpdis, ess, fcs = cwpdis_ess_eval(data)
         
         conc_dt.loc['all', 'v_cwpdis'] = v_cwpdis
         
         conc_dt.loc['all', 'ess'] = ess
+        
+        conc_dt.loc['all', 'fcs'] = fcs
         
         conc_dt.to_csv(res_dir + 'action_concordant_rate.csv', encoding = 'gb18030')
         
@@ -373,14 +375,18 @@ def run_eval(data, loss, datatype, SEED = setting.SEED, mode = 'train', paramete
         data = data.groupby('patientunitstayid').apply(cal_pnt)
         # aa = data[['patientunitstayid','step_id','concordant','pnt']]
         v_cwpdis = 0
+        fcs = 0
         for t in range(1, max(data['step_id'])+1):
             tmp = data[data['step_id'] == t-1]
             if sum(tmp['pnt']) > 0:
                 v_cwpdis += parameters['discount']**t * (sum(tmp['reward']*tmp['pnt'])/sum(tmp['pnt']))
-        
+            
+            if t == max(data['step_id']):
+                fcs = sum(tmp['pnt'])
+            
         ess = sum(data['pnt'])
         
-        return v_cwpdis, ess
+        return v_cwpdis, ess, fcs
         
     def cal_pnt(dt):
         dt['conc_cumsum'] = dt['concordant'].cumsum()
@@ -428,7 +434,7 @@ def run_eval(data, loss, datatype, SEED = setting.SEED, mode = 'train', paramete
     stratify_col = 'SOFA_level'
     data[stratify_col] = (data['ori_sofa_24hours'] <= 6)+0 
     
-    res_dir = 'result/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '_' + setting.REWARD_FUN + '_' + datatype +'_' + str(SEED) + '_' + setting.MODEL + '_' +  mode + '_' + val_str + '/'
+    res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
     if os.path.isdir(res_dir) == False:
         os.makedirs(res_dir)            
     action_distribution3(data)

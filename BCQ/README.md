@@ -1,5 +1,5 @@
 运行方式：
-1. 下载liuzhuo处理的最终版数据，放在code目录下的data文件夹内，mimic数据的csv和pkl文件加"_mimic"后缀，eicu数据的csv和pkl文件加"_eicu"后缀。
+1. 下载最新处理过的数据，放在code目录下解压。地址：https://drive.google.com/drive/folders/1T5kk1JqSfudEFi6vhECeQkn1Y7SFsAiW
 2. python run_Pendulum_with_val.py
 
 在setting.py中设置VALIDATION为True可利用验证集选择超参数。
