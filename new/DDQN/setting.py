@@ -1,59 +1,35 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Dec 11 11:04:52 2020
 
-@author: 18795
-"""
 import numpy as np
 import pickle
 
-SEED = 10
-ITERATION_ROUND = 20
+SEED = 5                                 # 可调  主要影响参数初始化和训练时选择数据的顺序
+ITERATION_ROUND = 20                     # 可调  大约遍历数据集多少次
 ACTION_SPACE = 18# 27
 BATCH_SIZE = 256
-GAMMA = 0.99
-VALIDATION = False
-TIME_RANGE = '24h'   # 48h
+GAMMA = 0.99                             # 可调  discount factor γ, 建议0.9 ~ 0.995之间
+VALIDATION = False                       # 是否使用验证集自适应选择超参数
 
-MODEL = 'DQN' # 'DQN' 'FQI'
+DATA_DATE = '0326'   # 0326                数据版本
+TIME_RANGE = '24h'   # 24h                 入组条件，目前使用>=24h条件入组的患者
+CUT_TIME = '72h'   # 48h/72h/14d           可调  截断时间，episode长度
+TRAIN_SET = 'mimic'   # mimic/eicu         可调  训练数据集，在mimic/eicu上训练 （在另一个数据集上测试）
+STEP_LENGTH = '240min'   # 240min/60min    可调  每个time_step的长度
+CRITICAL_STATE = True   # True/False       可调  是否仅使用关键state
 
+REWARD_FUN = 'reward_short_long_usd'     # 可调  在本py中定义新的reward函数
 
-state_col = pickle.load(open('../data/state_columns_mimic_'+ TIME_RANGE +'.pkl','rb'))
+MODEL = 'DQN' 
+
+if CRITICAL_STATE:
+    state_col = pickle.load(open('../data/%s/state_columns_critical.pkl'%(DATA_DATE),'rb'))
+else:
+    state_col = pickle.load(open('../data/%s/state_columns.pkl'%(DATA_DATE),'rb'))
+    
 next_state_col = ['next_' + f for f in state_col]
 
-# no apache now
-# state_col = ['heartrate', 'respiratoryrate', 'spo2', 'temperature', 'sbp', 'dbp', 'lactate',
-#              'bicarbonate', 'wbc', 'pao2', 'paco2', 'pH', 'gcs', 'intaketotal',
-#              'urineoutput', 'med_sedation', 'med_neuromuscular_blocker', 'age', 'gender',
-#              'admissionweight', 'sofatotal', 'equivalent_mg_4h']
-# next_state_col = ['next_heartrate', 'next_respiratoryrate', 'next_spo2', 'next_temperature',
-#                   'next_sbp', 'next_dbp', 'next_lactate', 'next_bicarbonate', 'next_wbc',
-#                   'next_pao2', 'next_paco2', 'next_pH', 'next_gcs', 'next_intaketotal',
-#                    'next_urineoutput', 'next_med_sedation', 'next_med_neuromuscular_blocker',
-#                   'next_age', 'next_gender', 'next_admissionweight', 'next_sofatotal', 'next_equivalent_mg_4h']
 action_dis_col = ['PEEP_level', 'FiO2_level', 'Tidal_level']
-# reward_col = ['ori_spo2', 'next_ori_spo2', 'hosp_mort']
-
-REWARD_FUN = 'reward_short_long_usd_new'
-
-def reward_short_long_usd2(x):
-    res = 0
-    if (x['done'] == 1 and x['hosp_mort'] == 1):
-        res = -10
-    elif (x['done'] == 1 and x['hosp_mort'] == 0):
-        res = 10
-    elif x['done'] == 0:
-        if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
-            res += 1
-        elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
-            res -= 1
-        if (x['ori_mbp'] < 70 or x['ori_mbp'] > 80) and (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
-            res += 1
-        elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
-            res -= 1
-    else:
-        res = np.nan
-    return res
+other_related_col = ['ori_sofa_24hours','ori_spo2','ori_mbp']
+other_related_next_col = ['ori_sofa_24hours','next_ori_spo2','next_ori_mbp'] # 需和上面一个对应
 
 def reward_short_long_usd(x):
     res = 0
@@ -70,8 +46,25 @@ def reward_short_long_usd(x):
             res += 1
         elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
             res -= 1
-    else:
-        res = np.nan
+
+    return res
+
+def reward_short_long_usd2(x):
+    res = 0
+    if (x['done'] == 1 and x['hosp_mort'] == 1):
+        res = -10
+    elif (x['done'] == 1 and x['hosp_mort'] == 0):
+        res = 10
+    elif x['done'] == 0:
+        if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
+            res += 1
+        elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
+            res -= 1
+        if (x['ori_mbp'] < 70 or x['ori_mbp'] > 80) and (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
+            res += 1
+        elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
+            res -= 1
+
     return res
 
 def reward_short_long10_2(x):
@@ -89,8 +82,7 @@ def reward_short_long10_2(x):
             res += 2
         elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
             res -= 1
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long10(x):
@@ -108,8 +100,7 @@ def reward_short_long10(x):
             res += 2
         elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
             res -= 2
-    else:
-        res = np.nan
+
     return res
 
 def reward_only_long_positive10(x):
@@ -120,8 +111,7 @@ def reward_only_long_positive10(x):
         res = 10
     elif x['done'] == 0:
         res = 0
-    else:
-        res = np.nan
+
     return res
 
 def reward_only_long(x):
@@ -132,8 +122,7 @@ def reward_only_long(x):
         res = 1
     elif x['done'] == 0:
         res = 0
-    else:
-        res = np.nan
+
     return res
 
 def reward_only_long_positive(x):
@@ -144,8 +133,7 @@ def reward_only_long_positive(x):
         res = 1
     elif x['done'] == 0:
         res = 0
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long_spo2(x):
@@ -159,8 +147,7 @@ def reward_short_long_spo2(x):
             res += 0.1
         elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
             res -= 0.1
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long_spo2_positive(x):
@@ -172,8 +159,7 @@ def reward_short_long_spo2_positive(x):
     elif x['done'] == 0:
         if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
             res += 0.1
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long_usd_new(x):
@@ -191,8 +177,7 @@ def reward_short_long_usd_new(x):
             res += 0.25
         elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
             res -= 0.25
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long_usd_new2(x):
@@ -210,8 +195,7 @@ def reward_short_long_usd_new2(x):
             res += 0.5
         elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
             res -= 0.5
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long_usd_new3(x):
@@ -229,8 +213,7 @@ def reward_short_long_usd_new3(x):
             res += 1
         elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
             res -= 1
-    else:
-        res = np.nan
+
     return res
 
 def reward_short_long_usd_new4(x):
@@ -240,8 +223,7 @@ def reward_short_long_usd_new4(x):
     elif (x['done'] == 1 and x['hosp_mort'] == 0):
         res = 10
 
-    else:
-        res = np.nan
+
     return res
 '''
 def reward_short_long_spo2_mbp_positive(x):
@@ -253,7 +235,37 @@ def reward_short_long_spo2_mbp_positive(x):
     elif x['done'] == 0:
         if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
             res += 0.1
-    else:
-        res = np.nan
+
     return res
+'''
+
+def reward_short_long_usd_new_plus(x):
+    res = 0
+    if (x['done'] == 1 and x['hosp_mort'] == 1):
+        res = -5
+    elif (x['done'] == 1 and x['hosp_mort'] == 0):
+        res = 10
+    elif x['done'] == 0:
+        if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
+            res += 0.5
+        elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
+            res -= 0
+        if (x['ori_mbp'] < 70 or x['ori_mbp'] > 80) and (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
+            res += 0.25
+        elif (x['ori_mbp'] >= 70 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
+            res -= 0
+
+    return res
+
+'''
+state_col = pickle.load(open('../data/%s/state_columns.pkl'%(DATA_DATE),'rb'))
+not_critical_states = [
+'chloride', 'potassium', 'sodium', 'glucose', 'hemoglobin', 'bun', 'creatinine',
+'albumin', 'magnesium', 'calcium', 'ionized_calcium', 'platelet', 'pt', 'ptt',
+'inr', 'bilirubin_total']
+critical_states = list(set(state_col).difference(set(not_critical_states)))
+with open('../data/%s/state_columns_not_critical.pkl'%(DATA_DATE),'wb') as fw:
+    pickle.dump(not_critical_states,fw)
+with open('../data/%s/state_columns_critical.pkl'%(DATA_DATE),'wb') as fw:
+    pickle.dump(critical_states,fw)
 '''

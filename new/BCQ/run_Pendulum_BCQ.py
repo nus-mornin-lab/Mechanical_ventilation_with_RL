@@ -3,7 +3,6 @@ import copy
 import importlib
 import json
 import os
-#  os.chdir('D:/pingan/比赛/2020SingaporeDatathon/BCQ/BCQ-master/discrete_BCQ')
 import numpy as np
 import torch
 import discrete_BCQ
@@ -15,19 +14,30 @@ from sklearn.model_selection import KFold
 import random
 import itertools
 from datetime import datetime
+import pickle
 
+SEED = setting.SEED
+ITERATION_ROUND = setting.ITERATION_ROUND
+ACTION_SPACE = setting.ACTION_SPACE
+BATCH_SIZE = setting.BATCH_SIZE
+GAMMA = setting.GAMMA
+VALIDATION = setting.VALIDATION
+
+DATA_DATE = setting.DATA_DATE
+TIME_RANGE = setting.TIME_RANGE
+CUT_TIME = setting.CUT_TIME 
+TRAIN_SET = setting.TRAIN_SET
+STEP_LENGTH = setting.STEP_LENGTH
+CRITICAL_STATE = setting.CRITICAL_STATE
+
+MODEL = setting.MODEL
 
 state_col = setting.state_col
 next_state_col = setting.next_state_col
 action_dis_col = setting.action_dis_col
-ITERATION_ROUND = setting.ITERATION_ROUND
-ACTION_SPACE = setting.ACTION_SPACE
-BATCH_SIZE = setting.BATCH_SIZE
-SEED = setting.SEED
+other_related_col = setting.other_related_col
+other_related_next_col = setting.other_related_next_col
 REWARD_FUN = setting.REWARD_FUN
-TIME_RANGE = setting.TIME_RANGE
-
-# MODEL = setting.MODEL
 
 # Trains BCQ offline
 def train_BCQ(replay_buffer, num_actions, state_dim, device, parameters):
@@ -55,6 +65,66 @@ def train_BCQ(replay_buffer, num_actions, state_dim, device, parameters):
     Q_s, actions = policy.select_action_new(np.array(replay_buffer.state))
     return policy.loss ,policy, Q_s, actions
 
+def divide_set(data_name, save_path):
+    np.random.seed(523)
+    random.seed(523)
+    data = pd.read_csv(data_name)
+    all_stay = np.array(data['patientunitstayid'].unique().tolist()) 
+    val_test_stay = np.random.choice(all_stay, size=int(len(all_stay)*2/5), replace=False)
+    val_stay = np.random.choice(val_test_stay, size=int(len(val_test_stay)/2), replace=False).tolist()
+    test_stay = list(set(val_test_stay) ^ set(val_stay))
+    train_stay = list(set(all_stay) ^ set(val_test_stay))
+    pt_set = {}
+    for k in train_stay:
+        pt_set[k] = 'trainset'
+    for k in test_stay:
+        pt_set[k] = 'testset'
+    for k in val_stay:
+        pt_set[k] = 'valset'
+    with open(save_path,'wb') as fw:
+        pickle.dump(pt_set,fw)
+    return pt_set
+
+def pre_processing(data, SET):
+
+    # tag some labels...
+    data['set'] = data['patientunitstayid'].apply(lambda x: patient_set[SET][x])
+    data['step_id'] = data['step_id'].astype(int)
+    data['done'] = 0
+    
+    # first cut length (if need)
+    if CUT_TIME == '72h':
+        if STEP_LENGTH == '240min':
+            data = data[data['step_id'] < 18]
+        elif STEP_LENGTH == '60min':
+            data = data[data['step_id'] < 72]
+    elif CUT_TIME == '48h':
+        if STEP_LENGTH == '240min':
+            data = data[data['step_id'] < 12]
+        elif STEP_LENGTH == '60min':
+            data = data[data['step_id'] < 48]
+    
+    # then fill data and shift to tag next_col
+    def f_b_fill_and_tag_done(dt):
+        dt['done'].values[-1] = 1
+        dt[state_col+other_related_col] = dt[state_col+other_related_col].fillna(method = 'ffill').fillna(method = 'bfill')
+        return dt
+        # first f_b_fill
+    data = data.groupby(['patientunitstayid']).apply(f_b_fill_and_tag_done)
+        # then shift to tag next_col
+    data[next_state_col+other_related_next_col] = data[state_col+other_related_col].shift(-1)
+            
+    # then fill median
+    data.loc[data['done'] == 1, next_state_col+other_related_next_col] = np.nan
+    data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(x.median())) 
+    data = data.reset_index(drop = True)
+
+    # finally calculate reward and actions
+    data['reward'] = data.apply(eval('setting.' + REWARD_FUN) , axis = 1)
+    data['actions'] = data.apply(lambda x: int(x[action_dis_col[0]] * 9 + x[action_dis_col[1]] * 3 + x[action_dis_col[2]]), axis =1)
+    # data.fillna(0, inplace=True)    
+    return data
+
 # calculate cwpdis
 def cal_cpwdis(val_dt, parameters):
     val_dt['concordant'] = val_dt.apply(lambda x: (x['actions'] == x['ai_action']) +0 ,axis = 1)
@@ -77,54 +147,41 @@ def cal_pnt(dt):
     dt['pnt'] = (dt['conc_cumsum'] == (dt['step_id'] + 1))+0
     return dt
 
-
-
 if __name__ == "__main__":
     
-    eicu_data = '../data/data_rl_60min_eicu_'+ TIME_RANGE + '.csv'#'data/data_rl_with_dose.csv' #
-    mimic_data = '../data/data_rl_60min_mimic_'+ TIME_RANGE +'.csv'#'data/mimic_data_rl_with_dose_11Dec.csv' 
-    cut_mimic_data = '../data/data_rl_60min_mimic_'+ TIME_RANGE + '_72h' +'_cut.csv'
-    cut_eicu_data = '../data/data_rl_60min_eicu_'+ TIME_RANGE + '_72h' +'_cut.csv'
+    mimic_data = '../data/%s/data_rl_%s_mimic.csv'%(DATA_DATE, STEP_LENGTH) #'data/mimic_data_rl_with_dose_11Dec.csv' 
+    eicu_data = '../data/%s/data_rl_%s_eicu.csv'%(DATA_DATE, STEP_LENGTH) #'data/data_rl_with_dose.csv' #
+    mimic_set_path = '../data/%s/mimic_set.pkl'%(DATA_DATE)
+    eicu_set_path = '../data/%s/eicu_set.pkl'%(DATA_DATE)
+    data_for_train_test = {}
+    if TRAIN_SET == 'mimic':
+        data_for_train_test['train'] = mimic_data
+        data_for_train_test['test'] = eicu_data
+        TEST_SET = 'eicu'
+    elif TRAIN_SET == 'eicu':
+        data_for_train_test['train'] = eicu_data
+        data_for_train_test['test'] = mimic_data
+        TEST_SET = 'mimic'
     
-    ### train val test on mimic
-    if os.path.exists(cut_mimic_data) == False:
-        data = pd.read_csv(mimic_data)
-        data['gender'] = data['gender'].apply(lambda x: 0 if (x == 'F' or x == 0)  else 1) # 男-1， 女-0
-        data['step_id'] = data['step_id'].astype(int)
-        data = data[data['step_id'] < 72]  # 72小时以内的数据
-        data = data.reset_index(drop = True)
+    ### train val test 
+    patient_set = {}
+    if os.path.exists(mimic_set_path) == False:
+        mimic_set = divide_set(mimic_data, mimic_set_path)
+    else:
+        mimic_set = pickle.load(open(mimic_set_path,'rb'))
+            
+    if os.path.exists(eicu_set_path) == False:
+        eicu_set = divide_set(eicu_data, eicu_set_path)
+    else:
+        eicu_set = pickle.load(open(eicu_set_path,'rb'))
         
-        # cur train val test 
-        all_stay = np.array(data['patientunitstayid'].unique().tolist()) 
-        val_test_stay = np.random.choice(all_stay, size=int(len(all_stay)*2/5), replace=False)
-        val_stay = np.random.choice(val_test_stay, size=int(len(val_test_stay)/2), replace=False).tolist()
-        test_stay = list(set(val_test_stay) ^ set(val_stay))
-        train_stay = list(set(all_stay) ^ set(val_test_stay))
-        
-        data['set'] = data['patientunitstayid'].apply(lambda x: 'trainset' if x in train_stay else 'testset' if x in test_stay else 'valset' if x in val_stay else np.nan)
-        data.to_csv(cut_mimic_data)
-        
-    ### test on eicu
-    if os.path.exists(cut_eicu_data) == False:
-        data = pd.read_csv(eicu_data)
-        data['gender'] = data['gender'].apply(lambda x: 0 if (x == 'F' or x == 0)  else 1) # 男-1， 女-0
-        data['step_id'] = data['step_id'].astype(int)
-        data = data[data['step_id'] < 72]  # 72小时以内的数据
-        data = data.reset_index(drop = True)
-        data.to_csv(cut_eicu_data)
-    
-    data = pd.read_csv(cut_mimic_data)
-    # data['step_id'] = data['step_id'].astype(int)
-    
-    # calculate reward and actions
-    data['reward'] = data.apply(eval('setting.' + REWARD_FUN) , axis = 1)
-    data['actions'] = data.apply(lambda x: int(x[action_dis_col[0]] * 9 + x[action_dis_col[1]] * 3 + x[action_dis_col[2]]), axis =1)
-    actions = data['actions']
+    patient_set['mimic'] = mimic_set
+    patient_set['eicu'] = eicu_set
 
-    data.fillna(0, inplace=True)    
+    data = pd.read_csv(data_for_train_test['train'])
+    data = pre_processing(data, TRAIN_SET)
+    #  aa = data[state_col + action_dis_col]
     MAX_TIMESTEPS = int(len(data) / BATCH_SIZE * ITERATION_ROUND)
-    GAMMA = setting.GAMMA
-
     regular_parameters = {
     "is_atari":False,
     # Learning
@@ -157,7 +214,7 @@ if __name__ == "__main__":
     test_data = data[data['set'] == 'testset']
     test_data = test_data.reset_index(drop = True)
     
-    if setting.VALIDATION == True:
+    if VALIDATION == True:
         # candidate parameters
         val_paras = {}
         # val_paras['discount'] = np.arange(0.7, 0.9, 0.1)  # 0.7, 0.8, 0.9   # 如果有discount则不能直接看cwpdis
@@ -207,64 +264,46 @@ if __name__ == "__main__":
     data_['ai_action'] = final_actions
     
     # save model
-    mod_dir = '../model/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '_' + setting.REWARD_FUN  +'_' + str(SEED) + '_' + setting.MODEL + '_' + val_str + '_'+ TIME_RANGE + '_72h_cut' +'/'
+    mod_dir = '../model/%s_%s_%s_%s_%s_%s_%s_trainon%s_crit-%s/'%(datetime.now().strftime('%Y-%m-%d-%H-%M-%S')[2:16], REWARD_FUN, str(SEED), MODEL, val_str, STEP_LENGTH, CUT_TIME, TRAIN_SET, str(CRITICAL_STATE))
+    
+    
     if os.path.isdir(mod_dir) == False:
         os.makedirs(mod_dir)            
     torch.save(policy, mod_dir + 'model.pkl')
     # load
     # policy = torch.load('\model.pkl')
     
+    res_dir_ = '../result/%s_%s_%s_%s_%s_%s_%s_trainon%s_crit-%s/'%(datetime.now().strftime('%Y-%m-%d-%H-%M-%S')[2:16], REWARD_FUN, str(SEED), MODEL, val_str, STEP_LENGTH, CUT_TIME, TRAIN_SET, str(CRITICAL_STATE))
     
-    res_dir_ = '../result/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '_' + setting.REWARD_FUN  +'_' + str(SEED) + '_' + setting.MODEL + '_' + val_str + '_'+ TIME_RANGE + '_72h_cut' +'/'
     #  evaluate on train(+val) set
-    datatype = 'mimic'
-    evaluation_new.run_eval(res_dir_, data_,loss_,datatype, setting.SEED, 'train', parameters, val_str, val_res, TIME_RANGE)
+    datatype = TRAIN_SET
+    evaluation_new.run_eval(res_dir_, data_,loss_,datatype, SEED, 'train', parameters, val_str, val_res)
     
     # evaluate on test_in set
     Q_s_, final_actions_ = policy.select_action_new(np.array(test_data[state_col]))
     test_data = pd.concat([test_data, pd.DataFrame(Q_s_, columns = ['Q_' + str(i) for i in range(num_actions)])] , axis = 1)
     test_data['ai_action'] = final_actions_
-    evaluation_new.run_eval(res_dir_, test_data,False,datatype, setting.SEED, 'innertest', parameters, val_str, pd.DataFrame(), TIME_RANGE)
+    evaluation_new.run_eval(res_dir_, test_data,False,datatype, SEED, 'innertest', parameters, val_str, pd.DataFrame())
     
     # evaluate on test_out set
-    outer_test_data = pd.read_csv(cut_eicu_data)
+    outer_test_data = pd.read_csv(data_for_train_test['test'])
     
-    outer_test_data['reward'] = outer_test_data.apply(eval('setting.' + REWARD_FUN) , axis = 1)
-    outer_test_data['actions'] = outer_test_data.apply(lambda x: int(x[action_dis_col[0]] * 9 + x[action_dis_col[1]] * 3 + x[action_dis_col[2]]), axis =1)
-    outer_test_data.fillna(0, inplace=True)
-    if len(outer_test_data['PEEP_level'].unique()) == 3:
-        outer_test_data['PEEP_level'] = outer_test_data['PEEP_level'].apply(lambda x: 0 if (x == 0 or x == 1) else 1 if x == 2 else np.nan)
-
+    outer_test_data = pre_processing(outer_test_data, TEST_SET)
+    
     Q_s_, final_actions_ = policy.select_action_new(np.array(outer_test_data[state_col]))
+    
     outer_test_data = pd.concat([outer_test_data, pd.DataFrame(Q_s_, columns = ['Q_' + str(i) for i in range(num_actions)])] , axis = 1)
     outer_test_data['ai_action'] = final_actions_
     
-    datatype_ = 'eicu'
-    evaluation_new.run_eval(res_dir_, outer_test_data,False,datatype_, setting.SEED, 'outtertest', parameters, val_str, pd.DataFrame(), TIME_RANGE)
+    datatype_ = TEST_SET
+    evaluation_new.run_eval(res_dir_, outer_test_data,False,datatype_, SEED, 'outtertest', parameters, val_str, pd.DataFrame())
     
-    # len(train_data)
-    
-    # len(val_data)
-    
-    # len(test_data)
-    
-    # len(outer_test_data)
-    
-    # len(outer_test_data['patientunitstayid'].unique())
-    
-    # len(test_data['patientunitstayid'].unique())
-    
-    # len(train_data['patientunitstayid'].unique())
-    
-    # len(val_data['patientunitstayid'].unique())
-    
-    # len(test_data['patientunitstayid'].unique())
-    
-    # (outer_test_data['hosp_mort'] == 1).mean()
-    
-    # (outer_test_data.drop_duplicates(subset = ['patientunitstayid'])['hosp_mort'] == 1).mean()
-    
-    # (data.drop_duplicates(subset = ['patientunitstayid'])['hosp_mort'] == 1).mean()
-    
-    
-    
+    # aa = data.loc[0:1000, state_col + next_state_col+['done']]
+    # aaa = data['ori_sofa_24hours']
+    # tt = data['reward']
+    # cwpdis_ess_eval(outer_test_data)
+    # data = outer_test_data
+    #  xx = outer_test_data['reward']
+    #  aa =outer_test_data[outer_test_data['reward'].astype(str) == 'nan']['step_id']
+    # tmp = outer_test_data.loc[26031:26034, ['done','ori_spo2']]
+    # xxx = pd.isnull(train_data['ori_spo2'])

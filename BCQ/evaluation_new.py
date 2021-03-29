@@ -432,7 +432,8 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     data = data.reset_index(drop = True).copy()
     
     stratify_col = 'SOFA_level'
-    data[stratify_col] = (data['ori_sofa_24hours'] <= 6)+0 
+    data[stratify_col] = data['ori_sofa_24hours'].apply(lambda x: 0 if x <= 5 else 1 if (x > 5 and x < 15) else 2 if x >= 15 else np.nan) 
+
     
     res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
     if os.path.isdir(res_dir) == False:
