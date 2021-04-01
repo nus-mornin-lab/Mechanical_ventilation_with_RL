@@ -333,4 +333,10 @@ if __name__ == "__main__":
     datatype_ = TEST_SET
     evaluation_new.run_eval(res_dir_, outer_test_data,False,datatype_, SEED, 'outtertest', parameters, val_str, pd.DataFrame())
 
-    
+    # pd.Series(np.argmax(Q_s,axis = 1)).value_counts()
+    '''
+    def cal_ress(dt):
+        dt['mean_reward'] = dt['reward'].mean()
+        return dt['mean_reward'].values[0]
+    '''
+    # train_val_data.groupby('actions').apply(cal_ress)

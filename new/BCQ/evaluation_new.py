@@ -346,8 +346,9 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
             q_dr_dt.loc[mod,'deathrate'] = res_dt.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'] , res_dt),'dr']
             q_dr_dt.loc[mod,'spo2reachrate'] = res_dt_.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'], res_dt_),'rr']
             q_dr_dt.loc[mod,'mbpreachrate'] = res_dt_.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'], res_dt__),'rr']
-        q_dr_dt.to_csv(res_dir + 'qmean_and_deathreachrate.csv', encoding = 'gb18030')
-            
+        # q_dr_dt.to_csv(res_dir + 'qmean_and_deathreachrate.csv', encoding = 'gb18030')
+        q_dr_dt.to_excel(writer, 'qmean_and_deathreachrate')
+        
         return q_dr_dt
     
     def action_concordant_rate(data):
@@ -367,7 +368,19 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         
         conc_dt.loc['all', 'fcs'] = fcs
         
-        conc_dt.to_csv(res_dir + 'action_concordant_rate.csv', encoding = 'gb18030')
+        conc_dt.to_excel(writer, 'action_concordant_rate')
+        # conc_dt.to_csv(res_dir + 'action_concordant_rate.csv', encoding = 'gb18030')
+        
+        phys_distri = pd.DataFrame(data[phys_action].value_counts().sort_index())
+        phys_distri['phys_rate'] = (phys_distri/sum(phys_distri[phys_action]))
+        phys_distri['phys_rate'] = phys_distri['phys_rate'].apply(lambda x: '%.2f%%'%(x * 100))
+        ai_distri = pd.DataFrame(data[ai_action].value_counts().sort_index())
+        ai_distri['ai_rate'] = (ai_distri/sum(ai_distri[ai_action]))
+        ai_distri['ai_rate'] = ai_distri['ai_rate'].apply(lambda x: '%.2f%%'%(x * 100))        
+        
+        distri_dt = pd.concat([phys_distri , ai_distri], axis = 1)
+        
+        distri_dt.to_excel(writer, 'action_distribution')
         
         return conc_dt
     
@@ -401,6 +414,12 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     
     np.random.seed(523)
     random.seed(523)
+    
+    res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
+    if os.path.isdir(res_dir) == False:
+        os.makedirs(res_dir)            
+    writer = pd.ExcelWriter(res_dir+'quantitative_results.xlsx', engine='xlsxwriter')
+    
     action_num = 18
     Q_list = ['Q_' + str(i) for i in range(action_num)]
     action_types = ['PEEP', 'FiO2', 'Tidal']
@@ -439,9 +458,6 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     stratify_col = 'SOFA_level'
     data[stratify_col] = data['ori_sofa_24hours'].apply(lambda x: 0 if x <= 5 else 1 if (x > 5 and x < 15) else 2 if x >= 15 else np.nan) 
     
-    res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
-    if os.path.isdir(res_dir) == False:
-        os.makedirs(res_dir)            
     action_distribution3(data)
     diff_vs_outcome(data)
     res_dt,res_dt_,res_dt__ = q_vs_outcome(data)
@@ -459,3 +475,6 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     fileObject = open(res_dir + 'parameters.json', 'w')
     fileObject.write(para)
     fileObject.close()
+    
+    
+    writer.save()

@@ -2,8 +2,8 @@
 import numpy as np
 import pickle
 
-SEED = 5                                 # 可调  主要影响参数初始化和训练时选择数据的顺序
-ITERATION_ROUND = 20                     # 可调  大约遍历数据集多少次
+SEED = 25                                 # 可调  主要影响参数初始化和训练时选择数据的顺序
+ITERATION_ROUND = 100                     # 可调  大约遍历数据集多少次
 ACTION_SPACE = 18# 27
 BATCH_SIZE = 256
 GAMMA = 0.99                             # 可调  discount factor γ, 建议0.9 ~ 0.995之间
