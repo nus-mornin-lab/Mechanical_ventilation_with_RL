@@ -111,6 +111,7 @@ def train(RL, data, first_run=True):
 
 
 def pre_processing(data, SET):
+    # SET = TRAIN_SET
 
     # tag some labels...
     data['set'] = data['patientunitstayid'].apply(lambda x: patient_set[SET][x])
@@ -137,11 +138,15 @@ def pre_processing(data, SET):
         # first f_b_fill
     data = data.groupby(['patientunitstayid']).apply(f_b_fill_and_tag_done)
         # then shift to tag next_col
+    if 'next_ori_sofa_24hours' not in data.columns.tolist():
+        data['next_ori_sofa_24hours'] = np.nan
     data[next_state_col+other_related_next_col] = data[state_col+other_related_col].shift(-1)
             
     # then fill median
     data.loc[data['done'] == 1, next_state_col+other_related_next_col] = np.nan
-    data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(x.median())) 
+    medians = data[['patientunitstayid'] + state_col+other_related_col+next_state_col+other_related_next_col].groupby('patientunitstayid').agg(np.nanmedian).agg(np.nanmedian)
+    data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(medians[x.name])) 
+    # data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(medians[x.name])) 
     data = data.reset_index(drop = True)
 
     # finally calculate reward and actions

@@ -15,6 +15,7 @@ import random
 import itertools
 from datetime import datetime
 import pickle
+import matplotlib.pyplot as plt
 
 SEED = setting.SEED
 ITERATION_ROUND = setting.ITERATION_ROUND
@@ -63,7 +64,7 @@ def train_BCQ(replay_buffer, num_actions, state_dim, device, parameters):
         policy.train(replay_buffer)
         training_iters += 1
     Q_s, actions = policy.select_action_new(np.array(replay_buffer.state))
-    return policy.loss ,policy, Q_s, actions
+    return policy.loss ,policy, Q_s, actions, policy.q_loss, policy.i_loss, policy.i2_loss
 
 def divide_set(data_name, save_path):
     np.random.seed(523)
@@ -86,6 +87,7 @@ def divide_set(data_name, save_path):
     return pt_set
 
 def pre_processing(data, SET):
+    # SET = TRAIN_SET
 
     # tag some labels...
     data['set'] = data['patientunitstayid'].apply(lambda x: patient_set[SET][x])
@@ -112,11 +114,15 @@ def pre_processing(data, SET):
         # first f_b_fill
     data = data.groupby(['patientunitstayid']).apply(f_b_fill_and_tag_done)
         # then shift to tag next_col
+    if 'next_ori_sofa_24hours' not in data.columns.tolist():
+        data['next_ori_sofa_24hours'] = np.nan
     data[next_state_col+other_related_next_col] = data[state_col+other_related_col].shift(-1)
             
     # then fill median
     data.loc[data['done'] == 1, next_state_col+other_related_next_col] = np.nan
-    data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(x.median())) 
+    medians = data[['patientunitstayid'] + state_col+other_related_col+next_state_col+other_related_next_col].groupby('patientunitstayid').agg(np.nanmedian).agg(np.nanmedian)
+    data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(medians[x.name])) 
+    # data[state_col+other_related_col+next_state_col+other_related_next_col] = data[state_col+other_related_col+next_state_col+other_related_next_col].apply(lambda x: x.fillna(medians[x.name])) 
     data = data.reset_index(drop = True)
 
     # finally calculate reward and actions
@@ -231,7 +237,7 @@ if __name__ == "__main__":
         # select best hyperparameters
         for ind in val_res.index:
             parameters.update(val_res.loc[ind,val_paras.keys()])
-            loss, policy, Q_s, final_actions = train_BCQ(replay_buffer,  num_actions, state_dim, device, parameters)
+            loss, policy, Q_s, final_actions, q_loss, i_loss, i2_loss = train_BCQ(replay_buffer,  num_actions, state_dim, device, parameters)
             Q_s_, final_actions_ = policy.select_action_new(np.array(val_data[state_col]))
             val_dt = pd.concat([val_data[['patientunitstayid','step_id','actions','reward']] , pd.DataFrame(final_actions_, columns = ['ai_action'])], axis = 1)
             v_cwpdis, ess, fcs = cal_cpwdis(val_dt, parameters)
@@ -254,7 +260,7 @@ if __name__ == "__main__":
     replay_buffer = utils.StandardBuffer(state_dim,  BATCH_SIZE, len(train_val_data), device)
     replay_buffer.add(np.array(train_val_data[state_col]), np.array(train_val_data['actions']).reshape(-1, 1), np.array(train_val_data[next_state_col]), np.array(train_val_data['reward']).reshape(-1, 1), np.array(train_val_data['done']).reshape(-1, 1))
 
-    loss, policy, Q_s, final_actions = train_BCQ(replay_buffer, num_actions, state_dim, device, parameters)
+    loss, policy, Q_s, final_actions, q_loss, i_loss, i2_loss = train_BCQ(replay_buffer, num_actions, state_dim, device, parameters)
     if torch.cuda.is_available():
         loss_ = [i.detach().cpu().numpy() for i in loss]
     else:   
@@ -274,6 +280,22 @@ if __name__ == "__main__":
     # policy = torch.load('\model.pkl')
     
     res_dir_ = '../result/%s_%s_%s_%s_%s_%s_%s_trainon%s_crit-%s/'%(datetime.now().strftime('%Y-%m-%d-%H-%M-%S')[2:16], REWARD_FUN, str(SEED), MODEL, val_str, STEP_LENGTH, CUT_TIME, TRAIN_SET, str(CRITICAL_STATE))
+    
+    if os.path.isdir(res_dir_) == False:
+        os.makedirs(res_dir_)            
+    
+    # plot loss
+    plt.figure(figsize=(7,4))
+    plt.plot(q_loss)
+    plt.savefig(res_dir_ + 'q_loss.jpg',dpi = 100)
+    
+    plt.figure(figsize=(7,4))
+    plt.plot(i_loss)
+    plt.savefig(res_dir_ + 'i_loss.jpg',dpi = 100)
+    
+    plt.figure(figsize=(7,4))
+    plt.plot(i2_loss)
+    plt.savefig(res_dir_ + 'i2_loss.jpg',dpi = 100)
     
     #  evaluate on train(+val) set
     datatype = TRAIN_SET

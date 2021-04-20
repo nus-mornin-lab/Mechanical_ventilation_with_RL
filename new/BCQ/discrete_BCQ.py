@@ -76,7 +76,9 @@ class discrete_BCQ(object):
         self.iterations = 0
         
         self.loss = []
-
+        self.q_loss = []
+        self.i_loss = []
+        self.i2_loss = []
 
     def select_action_new(self, state, eval=False):
         # changed here
@@ -133,7 +135,9 @@ class discrete_BCQ(object):
         self.iterations += 1
         self.maybe_update_target()
         self.loss.append(Q_loss)
-
+        self.q_loss.append(q_loss)
+        self.i_loss.append(i_loss)
+        self.i2_loss.append(1e-2 * i.pow(2).mean())
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):

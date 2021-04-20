@@ -1,5 +1,5 @@
 运行方式：
-1. 下载最新处理过的数据，在 new/data 目录下解压。地址：https://drive.google.com/file/d/1LneFLHyB2QPQ8DXmwIr-iHLno-WYacKV/view?usp=sharing
+1. 下载最新处理过的数据，在 new/data 目录下解压。地址：https://drive.google.com/drive/folders/1gh5RE8QdL1sG_TB_N9t9Ul4rjFePehz9
 2. 在 new/BCQ 中运行 python run_Pendulum_BCQ.py 或 在 new/DDQN 中运行 python run_Pendulum_DQN.py
 
 *在setting.py中设置参数，注释“可调”的都是可以尝试的。注意做BCQ和DDQN的对比实验时分别修改两个文件夹中setting.py中的参数
