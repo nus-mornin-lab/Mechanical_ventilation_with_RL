@@ -32,7 +32,7 @@ class discrete_BCQ(object):
         num_actions,
         state_dim,
         device,
-        BCQ_threshold=0.3,
+        BCQ_threshold=0.1,
         discount=0.99,
         optimizer="Adam",
         optimizer_parameters={},
@@ -79,6 +79,7 @@ class discrete_BCQ(object):
         self.q_loss = []
         self.i_loss = []
         self.i2_loss = []
+        self.pretrain_loss = []
 
     def select_action_new(self, state, eval=False):
         # changed here
@@ -138,6 +139,29 @@ class discrete_BCQ(object):
         self.q_loss.append(q_loss)
         self.i_loss.append(i_loss)
         self.i2_loss.append(1e-2 * i.pow(2).mean())
+
+    def pretrain(self, replay_buffer):
+        # Sample replay buffer
+        state, action, next_state, reward, done = replay_buffer.sample()
+
+        # Get current Q estimate
+        Q, imt, i = self.Q(state)
+        # current_Q = current_Q.gather(1, action)
+
+        # Compute Q loss
+        # q_loss = F.nll_loss(F.log_softmax(Q, dim=1), action.reshape(-1))
+        i_loss = F.nll_loss(imt, action.reshape(-1))
+
+        Q_loss = i_loss
+
+        # Optimize the Q
+        self.Q_optimizer.zero_grad()
+        Q_loss.backward()
+        self.Q_optimizer.step()
+
+        # Update target network by polyak or full copy every X iterations.
+        self.pretrain_loss.append(Q_loss)
+
 
     def polyak_target_update(self):
         for param, target_param in zip(self.Q.parameters(), self.Q_target.parameters()):
