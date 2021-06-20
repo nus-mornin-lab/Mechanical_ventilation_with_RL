@@ -17,18 +17,21 @@ from datetime import datetime
 import setting
 import json
 
+# plt.plot([1,1,2,2,3,3])
+# plt.savefig('test.tif', dpi = 300)
+
 def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train', parameters = {},val_str = 'val', val_res = pd.DataFrame(), TIME_RANGE = '24h'):
 
     def plot_loss(loss):
         if loss:
             plt.figure(figsize=(7,4))
             plt.plot(loss)
-            plt.savefig(res_dir + 'loss.jpg',dpi = 100)
+            plt.savefig(res_dir + 'loss.tif',dpi = 300)
             
     def plot_rewards(rewards):
         plt.figure(figsize=(7,4))
         plt.hist(rewards)
-        plt.savefig(res_dir + 'rewards.jpg',dpi = 100)        
+        plt.savefig(res_dir + 'rewards.tif',dpi = 300)        
         
     def tag_conc_rate_and_diff_mean(dt):
         for v in action_types:
@@ -90,7 +93,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.legend(['Phys policy','AI policy'])
         # plt.title('Action counts of Phys & AI policy')
         plt.tight_layout()
-        plt.savefig(res_dir + 'overall_action_distribution3.jpg',dpi = 200)
+        plt.savefig(res_dir + 'overall_act_distri3.tif',dpi = 300)
     
         # stratified action distribution   
         plt.figure(figsize=(8,7))
@@ -130,9 +133,9 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.legend(['Phys policy','AI policy'])
         # plt.title('Action counts of Phys & AI policy')
         plt.tight_layout()
-        plt.savefig(res_dir + 'stratified_action_distribution3.jpg',dpi = 200)        
+        plt.savefig(res_dir + 'strated_act_distri3.tif',dpi = 300)        
     
-    def diff_vs_outcome(data, outcome_col1 = 'hosp_mort',outcome_col2 = 'spo2_reach',outcome_col3 = 'mbp_reach', bootstrap_round = 100):
+    def diff_vs_outcome(data, outcome_col1 = 'hosp_mort',outcome_col2 = 'spo2_reach',outcome_col3 = 'mbp_reach', bootstrap_round = 1):
     
     # vs_motality
         data = data.reset_index(drop = True).copy()
@@ -153,10 +156,12 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
             
         used_data = data[[v + '_diff' for v in action_types] + [outcome_col1, outcome_col2, outcome_col3 ]]
         for i in range(bootstrap_round):
-            if i%10 == 0:
-                print ('bootstrap 4-hour level: ' + str(i) + '...')
-
-            df_index = np.random.choice(used_data.index, size = len(used_data))
+            # if i%10 == 0:
+                # print ('bootstrap 4-hour level: ' + str(i) + '...')
+            if bootstrap_round == 1:
+                df_index = used_data.index.tolist()
+            else:
+                df_index = np.random.choice(used_data.index, size = len(used_data))
             # visit level
             # diff vs motality
             for v in action_types:
@@ -168,7 +173,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
                     res[v][k].append(aa1.loc[k,outcome_col1])
                     res_[v][k].append(aa1.loc[k,outcome_col2])
                     res__[v][k].append(aa1.loc[k,outcome_col3])
-            
+        print ('bootstrap 4-hour level done ...')
         # patient level 
         x_s_a = {}
         res_a = {}
@@ -186,10 +191,14 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
 
         used_data = data[[v + '_diff_mean_level' for v in action_types] + [v + '_conc_rate_level' for v in action_types] + ['patientunitstayid',outcome_col1 ]].drop_duplicates(subset = ['patientunitstayid'])
         for i in range(bootstrap_round):
-            if i%10 == 0:
-                print ('bootstrap: patient level: ' + str(i) + '...')
+            # if i%10 == 0:
+                # print ('bootstrap: patient level: ' + str(i) + '...')
 
-            df_index = np.random.choice(used_data.index, size = len(used_data))
+            if bootstrap_round == 1:
+                df_index = used_data.index.tolist()
+            else:
+                df_index = np.random.choice(used_data.index, size = len(used_data))
+                
             # patient level
             for v in action_types:
                 diff_mean_col = v + '_diff_mean_level'
@@ -202,6 +211,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
                 for k in x_s_b[v]:
                     if k in bb.index:
                         res_b[v][k].append(bb[k])  
+        print ('bootstrap: patient level done...')
                         
         # plot 
         def plot_vs_outcome(x_s, res, x_name, y_name, title_name,color_):
@@ -232,7 +242,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
                     plt.ylabel(y_name)
                 plt.title(v)
             
-            plt.savefig(res_dir + title_name +'.jpg',dpi = 200)
+            plt.savefig(res_dir + title_name +'.tif',dpi = 300)
 
         plot_vs_outcome(x_s, res, 'Model action - Phys action', 'Motality', 'diff4h_vs_motality', 'red')
         plot_vs_outcome(x_s_a, res_a, 'Model action - Phys action','Motality', 'diffPatientlevel_vs_motality','brown')
@@ -268,7 +278,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.xlabel('Return of actions')
         plt.ylabel('Motality risk')
         
-        plt.savefig(res_dir + 'q_vs_motality.jpg',dpi = 200)
+        plt.savefig(res_dir + 'q_vs_motality.tif',dpi = 300)
         
         res_dt = pd.DataFrame()
         res_dt['bb'] = bb
@@ -292,7 +302,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.xlabel('Return of actions')
         plt.ylabel('sop2 reach prob')
         
-        plt.savefig(res_dir + 'q_vs_spo2.jpg',dpi = 200)
+        plt.savefig(res_dir + 'q_vs_spo2.tif',dpi = 300)
         
         res_dt_ = pd.DataFrame()
         res_dt_['bb'] = bb
@@ -316,7 +326,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.xlabel('Return of actions')
         plt.ylabel('mbp reach prob')
         
-        plt.savefig(res_dir + 'q_vs_mbp.jpg',dpi = 200)
+        plt.savefig(res_dir + 'q_vs_mbp.tif',dpi = 300)
         
         res_dt__ = pd.DataFrame()
         res_dt__['bb'] = bb
@@ -412,8 +422,8 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         return dt
         
     
-    np.random.seed(523)
-    random.seed(523)
+    # np.random.seed(523)
+    # random.seed(523)
     
     res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
     if os.path.isdir(res_dir) == False:
@@ -478,3 +488,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     
     
     writer.save()
+    
+    
+    
+    
