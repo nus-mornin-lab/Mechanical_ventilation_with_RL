@@ -14,7 +14,8 @@ import time
 from datetime import datetime
 import setting
 import json
-
+# data = data_
+# data2 = data_2
 def run_eval(res_dir_, data,data2, loss, datatype, SEED = setting.SEED, mode = 'train', parameters = {},val_str = 'val', val_res = pd.DataFrame(), TIME_RANGE = '24h'):
 
     def tag_conc_rate_and_diff_mean(dt):
@@ -67,7 +68,7 @@ def run_eval(res_dir_, data,data2, loss, datatype, SEED = setting.SEED, mode = '
                 if bootstrap_round == 1:
                     df_index = used_data.index.tolist()
                 else:
-                    df_index = np.random.choice(used_data.index, size = len(used_data))
+                    df_index = np.random.choice(used_data.index, size = len(used_data),replace=False)
                 # visit level
                 # diff vs motality
                 for v in action_types:

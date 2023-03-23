@@ -89,12 +89,6 @@ class discrete_BCQ(object):
             imt = imt.exp()
             imt = (imt/imt.max(1, keepdim=True)[0] > self.threshold).float()
             # Use large negative number to mask actions from argmax
-            
-            # print((1. - imt) * -1e8)
-            # print(imt * q)
-            # print(imt * q + (1. - imt) * -1e8)
-            # print((imt * q + (1. - imt) * -1e8).argmax(1))
-            # print(int((imt * q + (1. - imt) * -1e8).argmax(1)))
             if torch.cuda.is_available():
                 return q.cpu().numpy(), (imt * q + (1. - imt) * -1e8).argmax(1).cpu().numpy()
             else:
@@ -103,7 +97,7 @@ class discrete_BCQ(object):
 
     def train(self, replay_buffer):
         # Sample replay buffer
-        state, action, next_state, reward, done = replay_buffer.sample()
+        state, action, next_state, reward, not_done = replay_buffer.sample()
 
         # Compute the target Q value
         with torch.no_grad():
@@ -115,7 +109,7 @@ class discrete_BCQ(object):
             next_action = (imt * q + (1 - imt) * -1e8).argmax(1, keepdim=True)
 
             q, imt, i = self.Q_target(next_state)
-            target_Q = reward + done * self.discount * q.gather(1, next_action).reshape(-1, 1)
+            target_Q = reward + not_done * self.discount * q.gather(1, next_action).reshape(-1, 1)
 
         # Get current Q estimate
         current_Q, imt, i = self.Q(state)
@@ -142,7 +136,7 @@ class discrete_BCQ(object):
 
     def pretrain(self, replay_buffer):
         # Sample replay buffer
-        state, action, next_state, reward, done = replay_buffer.sample()
+        state, action, next_state, reward, not_done = replay_buffer.sample()
 
         # Get current Q estimate
         Q, imt, i = self.Q(state)

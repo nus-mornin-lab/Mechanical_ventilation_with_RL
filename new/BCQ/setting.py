@@ -1,17 +1,20 @@
+# import os
+# os.chdir('D:/pingan/比赛/2020SingaporeDatathon/gitplace/Mechanical_ventilation_with_RL/new/BCQ')
+
 
 import numpy as np
 import pickle
 import pandas as pd
 
-SEED = 777                                 # 主要影响参数初始化和训练时选择数据的顺序
+SEED = 523                                 # 主要影响参数初始化和训练时选择数据的顺序
 ITERATION_ROUND = 21                     # round 大约遍历数据集多少次
 ACTION_SPACE = 18# 27
-BATCH_SIZE = 256
+BATCH_SIZE = 32
 GAMMA = 0.99                             # discount factor γ, 建议0.9 ~ 0.995之间
 VALIDATION = False                       # 是否使用验证集自适应选择超参数
 ROUND_PER_EVAL = 1                       # 多少个round评估一次, 每个round代表约遍历一次训练数据
 
-DATA_DATE = '0523'   # 0326                数据版本
+DATA_DATE = '0705'   # 0326                数据版本
 TIME_RANGE = '24h'   # 24h                 入组条件，目前使用>=24h条件入组的患者
 CUT_TIME = '48h'   # 24h/48h/72h/7d/14d    截断时间，episode长度
 TRAIN_SET = 'eicu'   # mimic/eicu         训练数据集，在mimic/eicu上训练 （在另一个数据集上测试）
@@ -20,23 +23,27 @@ CRITICAL_STATE = False   # True/False       是否仅使用关键state
 TOP_STATE = None  # None/ 3-10            用随机森林选出的top n的特征来作为state
 MISSING_CUT = False  # True/False           是否只用missing1为0的数据
 PRETRAIN = True
-RE_DIVIDE_SET = False  #                   是否根据seed重新划分训练/测试数据集
+RE_DIVIDE_SET = True  #                   是否根据seed重新划分训练/测试数据集
+VAR = '_var'        # ''/'_var'                是否使用var数据（根据action发生时间切分sample）
 
-REWARD_FUN = 'reward_short_long_defined'     # 在本py中定义新的reward函数
+# REWARD_FUN = 'reward_short_long_defined'     # 在本py中定义新的reward函数
+REWARD_FUN = 'reward_short_long_defined2'     # 在本py中定义新的reward函数
 
 setting_paras = {}
-setting_paras['TRAIN_SET'] = ['mimic','eicu'] # change here for grid search
-# setting_paras['CUT_TIME'] = ['24h','48h','72h'] # change here for grid search
-# setting_paras['STEP_LENGTH'] = ['240min','60min'] # change here for grid search
+setting_paras['TRAIN_SET'] = ['eicu'] # change here for grid search
+setting_paras['CUT_TIME'] = ['48h','24h','72h'] # change here for grid search
+setting_paras['STEP_LENGTH'] = ['240min'] # change here for grid search
 setting_paras['MISSING_CUT'] = [False,True] # change here for grid search
-setting_paras['SEED'] = [777,523,666] # change here for grid search
-setting_paras['a'] = [20,10] # reward # change here for grid search
-setting_paras['b'] = [1,2,4] # reward # change here for grid search
-setting_paras['c'] = [1,2,4] # reward # change here for grid search
-# setting_paras['BCQ_THRESHOLD'] = [0, 0.1,0.2,0.3] # change here for grid search
-# setting_paras['GAMMA'] = [0.99] # change here for grid search 0.99/0.95/0.9
-# setting_paras['PRETRAIN'] = [True, False] # change here for grid search
-
+setting_paras['SEED'] = [5023,5024,5025,5026,5027,5028] # change here for grid search
+setting_paras['VAR'] = ['_var'] # change here for grid search
+setting_paras['a'] = [20] # reward # change here for grid search
+setting_paras['b'] = [2,1,0.5] # reward # change here for grid search
+setting_paras['c'] = [2,1,0.5] # reward # change here for grid search
+setting_paras['e'] = [0] # reward # change here for grid search
+setting_paras['f'] = [0] # reward # change here for grid search
+setting_paras['BCQ_THRESHOLD'] = [0.05] # change here for grid search
+# setting_paras['GAMMA'] = [0.99,0.95] # change here for grid search 0.99/0.95/0.9
+setting_paras['PRETRAIN'] = [False] # change here for grid search
 
 
 MODEL = 'BCQ' 
@@ -50,19 +57,32 @@ if TOP_STATE != None:
     state_dt = pd.read_excel('../data/%s/State_features.xlsx'%(DATA_DATE))
     state_col = state_dt['Top%s'%(str(TOP_STATE))].dropna().tolist()
     
+not_state_col = ['bilirubin_total','pao2fio2ratio','pao2','reintubation','intaketotal','nettotal']
+# not_state_col = ['intaketotal','nettotal'] # 0302口径
+
+for col in not_state_col:
+    state_col.remove(col)
+    
 next_state_col = ['next_' + f for f in state_col]
+ori_state_col = ['ori_' + f for f in state_col]
 
 action_dis_col = ['PEEP_level', 'FiO2_level', 'Tidal_level']
+
+def tag_action(x, action_dis_col):
+    action_ = int(x[action_dis_col[0]]*9 + x[action_dis_col[1]]*3 + x[action_dis_col[2]])
+    return action_
+
 other_related_col = ['ori_sofa_24hours','ori_spo2','ori_mbp']
 other_related_next_col = ['next_ori_sofa_24hours','next_ori_spo2','next_ori_mbp'] # 需和上面一个对应
 
-def reward_short_long_defined(x, a=20, b=2, c=2):
+def reward_short_long_defined(x, a=20, b=2, c=2, e= 0, f = 0):
     res = 0
     if (x['done'] == 1 and x['hosp_mort'] == 1):
         res = -a/2
     elif (x['done'] == 1 and x['hosp_mort'] == 0):
         res = a
     elif x['done'] == 0:
+        
         if (x['ori_spo2'] < 94 or x['ori_spo2'] > 98) and (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
             res += b
         elif (x['ori_spo2'] >= 94 and x['ori_spo2'] <= 98) and (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
@@ -71,6 +91,51 @@ def reward_short_long_defined(x, a=20, b=2, c=2):
             res += c
         elif (x['ori_mbp'] >= 65 and x['ori_mbp'] <= 80) and (x['next_ori_mbp'] <65 or x['next_ori_mbp'] > 80):
             res -= c/2
+            
+        if (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
+            res += e
+        if (x['next_ori_mbp'] >= 65 and x['next_ori_mbp'] <= 80):
+            res += f
+
+    return res
+
+def reward_short_long_defined2(x, a=20, b=2, c=2, e= 0, f = 0):
+    res = 0
+    if (x['done'] == 1 and x['hosp_mort'] == 1):
+        res = -a/2
+    elif (x['done'] == 1 and x['hosp_mort'] == 0):
+        res = a
+    elif x['done'] == 0:
+        
+        if (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
+            res += b
+        elif (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
+            res -= b/2
+        if (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
+            res += c
+        elif (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
+            res -= c/2
+            
+
+    return res
+
+def reward_short_long_defined3(x, a=20, b=2, c=2, e= 0, f = 0):
+    res = 0
+    if (x['done'] == 1 and x['hosp_mort'] == 1):
+        res = -a/2
+    elif (x['done'] == 1 and x['hosp_mort'] == 0):
+        res = a
+    elif x['done'] == 0:
+        
+        if (x['next_ori_spo2'] >= 94 and x['next_ori_spo2'] <= 98):
+            res += b
+        elif (x['next_ori_spo2'] < 94 or x['next_ori_spo2'] > 98):
+            res -= b/2
+        if (x['next_ori_mbp'] >= 70 and x['next_ori_mbp'] <= 80):
+            res += c
+        elif (x['next_ori_mbp'] <70 or x['next_ori_mbp'] > 80):
+            res -= c/2
+            
 
     return res
 
