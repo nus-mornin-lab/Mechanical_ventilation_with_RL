@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+plt.rc('font',family='Times New Roman')
 from scipy import stats 
 import os
 import time
@@ -23,7 +24,12 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         if loss:
             plt.figure(figsize=(7,4))
             plt.plot(loss)
-            plt.savefig(res_dir + 'loss.jpg',dpi = 100)
+            plt.savefig(res_dir + 'loss.tif',dpi = 300)
+            
+    def plot_rewards(rewards):
+        plt.figure(figsize=(7,4))
+        plt.hist(rewards)
+        plt.savefig(res_dir + 'rewards.tif',dpi = 300)        
         
     def tag_conc_rate_and_diff_mean(dt):
         for v in action_types:
@@ -85,7 +91,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.legend(['Phys policy','AI policy'])
         # plt.title('Action counts of Phys & AI policy')
         plt.tight_layout()
-        plt.savefig(res_dir + 'overall_action_distribution3.jpg',dpi = 200)
+        plt.savefig(res_dir + 'overall_act_distri3.tif',dpi = 300)
     
         # stratified action distribution   
         plt.figure(figsize=(8,7))
@@ -114,20 +120,22 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
                     bb,
                     color='red',
                     width=1/4)
-                plt.xlabel(v+' action taken')
+                plt.xlabel(v+' action taken', fontsize = 12)
                 if i == 0:
-                    plt.ylabel('Counts  -  ' + stratify_col + str(int(stra)))
+                    plt.ylabel('Counts  -  ' + stratify_col + str(int(stra)), fontsize = 12)
                 if len(x_s_) == 3:
-                    plt.xticks(x_s_,['Low','Med','High'],size = 9)
+                    plt.xticks(x_s_,['Low','Med','High'],size = 10)
+                    plt.yticks(size = 10)
                 else:
-                    plt.xticks(x_s_,['Low','High'],size = 9)
+                    plt.xticks(x_s_,['Low','High'],size = 10)
+                    plt.yticks(size = 10)
             
         plt.legend(['Phys policy','AI policy'])
         # plt.title('Action counts of Phys & AI policy')
         plt.tight_layout()
-        plt.savefig(res_dir + 'stratified_action_distribution3.jpg',dpi = 200)        
+        plt.savefig(res_dir + 'strated_act_distri3.tif',dpi = 300)        
     
-    def diff_vs_outcome(data, outcome_col1 = 'hosp_mort',outcome_col2 = 'spo2_reach',outcome_col3 = 'mbp_reach', bootstrap_round = 100):
+    def diff_vs_outcome(data, outcome_col1 = 'hosp_mort',outcome_col2 = 'spo2_reach',outcome_col3 = 'mbp_reach', bootstrap_round = 200):
     
     # vs_motality
         data = data.reset_index(drop = True).copy()
@@ -148,10 +156,12 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
             
         used_data = data[[v + '_diff' for v in action_types] + [outcome_col1, outcome_col2, outcome_col3 ]]
         for i in range(bootstrap_round):
-            if i%10 == 0:
-                print ('bootstrap 4-hour level: ' + str(i) + '...')
-
-            df_index = np.random.choice(used_data.index, size = len(used_data))
+            # if i%10 == 0:
+                # print ('bootstrap 4-hour level: ' + str(i) + '...')
+            if bootstrap_round == 1:
+                df_index = used_data.index.tolist()
+            else:
+                df_index = np.random.choice(used_data.index,replace=True, size = len(used_data))
             # visit level
             # diff vs motality
             for v in action_types:
@@ -163,7 +173,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
                     res[v][k].append(aa1.loc[k,outcome_col1])
                     res_[v][k].append(aa1.loc[k,outcome_col2])
                     res__[v][k].append(aa1.loc[k,outcome_col3])
-            
+        print ('bootstrap 4-hour level done ...')
         # patient level 
         x_s_a = {}
         res_a = {}
@@ -181,10 +191,14 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
 
         used_data = data[[v + '_diff_mean_level' for v in action_types] + [v + '_conc_rate_level' for v in action_types] + ['patientunitstayid',outcome_col1 ]].drop_duplicates(subset = ['patientunitstayid'])
         for i in range(bootstrap_round):
-            if i%10 == 0:
-                print ('bootstrap: patient level: ' + str(i) + '...')
+            # if i%10 == 0:
+                # print ('bootstrap: patient level: ' + str(i) + '...')
 
-            df_index = np.random.choice(used_data.index, size = len(used_data))
+            if bootstrap_round == 1:
+                df_index = used_data.index.tolist()
+            else:
+                df_index = np.random.choice(used_data.index, replace=False,size = len(used_data))
+                
             # patient level
             for v in action_types:
                 diff_mean_col = v + '_diff_mean_level'
@@ -197,6 +211,7 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
                 for k in x_s_b[v]:
                     if k in bb.index:
                         res_b[v][k].append(bb[k])  
+        print ('bootstrap: patient level done...')
                         
         # plot 
         def plot_vs_outcome(x_s, res, x_name, y_name, title_name,color_):
@@ -215,26 +230,23 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
             plt.figure(figsize=(12,4))
             for i,v in enumerate(action_types):
                 plt.subplot(131+i)
-                line1, = plt.plot(x_s[v],res_500[v], color=color_, lw=1.5, ls='-', ms=4)
-                plt.fill_between(x_s[v],res_025[v], res_975[v], color=color_, alpha=0.6)
+                line1, = plt.plot(x_s[v],res_500[v], color=color_[i], lw=1.5, ls='-', ms=4)
+                plt.fill_between(x_s[v],res_025[v], res_975[v], color=color_[i], alpha=0.6)
                 if x_name != 'Concordant rate':
-                    plt.xticks(x_s[v])
+                    plt.xticks(x_s[v],size = 13)
+                    plt.yticks(size = 13)
                 else:
                     plt.xticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0])
                 plt.grid()
-                plt.xlabel(x_name)
+                plt.xlabel(x_name,fontsize = 17) # 15
                 if i == 0:
-                    plt.ylabel(y_name)
-                plt.title(v)
+                    plt.ylabel(y_name,fontsize = 17) # 15
+                plt.title(v,fontsize = 18)
             
-            plt.savefig(res_dir + title_name +'.jpg',dpi = 200)
+            plt.tight_layout()
+            plt.savefig(res_dir + title_name +'.tif',dpi = 300)
 
-        plot_vs_outcome(x_s, res, 'Model action - Phys action', 'Motality', 'diff4h_vs_motality', 'red')
-        plot_vs_outcome(x_s_a, res_a, 'Model action - Phys action','Motality', 'diffPatientlevel_vs_motality','brown')
-        plot_vs_outcome(x_s_b, res_b, 'Concordant rate','Motality', 'conc_vs_motality','green')
-        
-        plot_vs_outcome(x_s, res_, 'Model action - Phys action','spo2_reach', 'diff4h_vs_spo2reach', 'pink')
-        plot_vs_outcome(x_s, res__, 'Model action - Phys action','mbp_reach', 'diff4h_vs_mbpreach', 'lightblue')
+        plot_vs_outcome(x_s, res, 'Model action - Phys action', 'Mortality', 'diff4h_vs_mortality', ['brown','grey','darkorange'])
 
 
     def q_vs_outcome(data, outcome_col1 = 'hosp_mort', outcome_col2 = 'spo2_reach', outcome_col3 = 'mbp_reach'):
@@ -258,12 +270,11 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.figure(figsize=(6,4))
         line1, = plt.plot(Q_s,res_500_Q, color='red', lw=1.5, ls='-', ms=4)
         plt.fill_between(Q_s,res_025_Q, res_975_Q, color='red', alpha=0.6)
-        # plt.xticks(Q_s)
-        # plt.grid()
+
         plt.xlabel('Return of actions')
         plt.ylabel('Motality risk')
         
-        plt.savefig(res_dir + 'q_vs_motality.jpg',dpi = 200)
+        plt.savefig(res_dir + 'q_vs_motality.tif',dpi = 300)
         
         res_dt = pd.DataFrame()
         res_dt['bb'] = bb
@@ -282,12 +293,11 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.figure(figsize=(6,4))
         line1, = plt.plot(Q_s,res_500_Q, color='pink', lw=1.5, ls='-', ms=4)
         plt.fill_between(Q_s,res_025_Q, res_975_Q, color='pink', alpha=0.6)
-        # plt.xticks(Q_s)
-        # plt.grid()
+
         plt.xlabel('Return of actions')
         plt.ylabel('sop2 reach prob')
         
-        plt.savefig(res_dir + 'q_vs_spo2.jpg',dpi = 200)
+        plt.savefig(res_dir + 'q_vs_spo2.tif',dpi = 300)
         
         res_dt_ = pd.DataFrame()
         res_dt_['bb'] = bb
@@ -306,12 +316,11 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         plt.figure(figsize=(6,4))
         line1, = plt.plot(Q_s,res_500_Q, color='lightblue', lw=1.5, ls='-', ms=4)
         plt.fill_between(Q_s,res_025_Q, res_975_Q, color='lightblue', alpha=0.6)
-        # plt.xticks(Q_s)
-        # plt.grid()
+
         plt.xlabel('Return of actions')
         plt.ylabel('mbp reach prob')
         
-        plt.savefig(res_dir + 'q_vs_mbp.jpg',dpi = 200)
+        plt.savefig(res_dir + 'q_vs_mbp.tif',dpi = 300)
         
         res_dt__ = pd.DataFrame()
         res_dt__['bb'] = bb
@@ -341,8 +350,9 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
             q_dr_dt.loc[mod,'deathrate'] = res_dt.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'] , res_dt),'dr']
             q_dr_dt.loc[mod,'spo2reachrate'] = res_dt_.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'], res_dt_),'rr']
             q_dr_dt.loc[mod,'mbpreachrate'] = res_dt_.loc[find_nearest_Q(q_dr_dt.loc[mod,'Q'], res_dt__),'rr']
-        q_dr_dt.to_csv(res_dir + 'qmean_and_deathreachrate.csv', encoding = 'gb18030')
-            
+        # q_dr_dt.to_csv(res_dir + 'qmean_and_deathreachrate.csv', encoding = 'gb18030')
+        q_dr_dt.to_excel(writer, 'qmean_and_deathreachrate')
+        
         return q_dr_dt
     
     def action_concordant_rate(data):
@@ -362,7 +372,18 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         
         conc_dt.loc['all', 'fcs'] = fcs
         
-        conc_dt.to_csv(res_dir + 'action_concordant_rate.csv', encoding = 'gb18030')
+        conc_dt.to_excel(writer, 'action_concordant_rate')
+        
+        phys_distri = pd.DataFrame(data[phys_action].value_counts().sort_index())
+        phys_distri['phys_rate'] = (phys_distri/sum(phys_distri[phys_action]))
+        phys_distri['phys_rate'] = phys_distri['phys_rate'].apply(lambda x: '%.2f%%'%(x * 100))
+        ai_distri = pd.DataFrame(data[ai_action].value_counts().sort_index())
+        ai_distri['ai_rate'] = (ai_distri/sum(ai_distri[ai_action]))
+        ai_distri['ai_rate'] = ai_distri['ai_rate'].apply(lambda x: '%.2f%%'%(x * 100))        
+        
+        distri_dt = pd.concat([phys_distri , ai_distri], axis = 1)
+        
+        distri_dt.to_excel(writer, 'action_distribution')
         
         return conc_dt
     
@@ -393,9 +414,11 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
         dt['pnt'] = (dt['conc_cumsum'] == (dt['step_id'] + 1))+0
         return dt
         
+    res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
+    if os.path.isdir(res_dir) == False:
+        os.makedirs(res_dir)            
+    writer = pd.ExcelWriter(res_dir+'quantitative_results.xlsx', engine='xlsxwriter')
     
-    np.random.seed(523)
-    random.seed(523)
     action_num = 18
     Q_list = ['Q_' + str(i) for i in range(action_num)]
     action_types = ['PEEP', 'FiO2', 'Tidal']
@@ -403,12 +426,15 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     phys_action = 'phys_action'
     ai_action = 'ai_action'
     
-    data['spo2_reach'] = data['next_ori_spo2'].apply(lambda x: (x >= 94 and x <= 98)+0 )
-    data['mbp_reach'] = data['next_ori_mbp'].apply(lambda x: (x >= 70 and x <= 80)+0 )
+    if 'spo2_reach' not in data.columns.tolist():
+        data['spo2_reach'] = data['next_ori_spo2'].apply(lambda x: (x >= 94 and x <= 98)+0 )
+    if 'mbp_reach' not in data.columns.tolist():
+        data['mbp_reach'] = data['next_ori_mbp'].apply(lambda x: (x >= 70 and x <= 80)+0 )
     data['step_id'] = data['step_id'].astype(int)
     
     if phys_action not in data.columns.tolist():
-        data[phys_action] = data.apply(lambda x: int(x[action_types[0]+'_level']*9 + x[action_types[1]+'_level']*3 + x[action_types[2]+'_level']),axis = 1)
+        data[phys_action] = data.apply(setting.tag_action,action_dis_col = setting.action_dis_col,axis = 1)
+
     data['ai_Q'] = np.max(data[Q_list],axis = 1)
     if ai_action not in data.columns.tolist():
         data[ai_action] = np.argmax(np.array(data[Q_list]),axis = 1)
@@ -433,24 +459,13 @@ def run_eval(res_dir_, data, loss, datatype, SEED = setting.SEED, mode = 'train'
     
     stratify_col = 'SOFA_level'
     data[stratify_col] = data['ori_sofa_24hours'].apply(lambda x: 0 if x <= 5 else 1 if (x > 5 and x < 15) else 2 if x >= 15 else np.nan) 
-
     
-    res_dir = res_dir_ + '_' + datatype  + '_'  +  mode + '/'
-    if os.path.isdir(res_dir) == False:
-        os.makedirs(res_dir)            
     action_distribution3(data)
     diff_vs_outcome(data)
-    res_dt,res_dt_,res_dt__ = q_vs_outcome(data)
-    q_dr_dt = quantitive_eval(data, res_dt,res_dt_,res_dt__) 
-    conc_dt = action_concordant_rate(data) 
-    plot_loss(loss)
-    print (q_dr_dt)
-    print (conc_dt)
-
-    if val_res.empty == False:
-        val_res.to_csv(res_dir + 'val_res.csv', encoding = 'gb18030')
-        
-    para = json.dumps(parameters)
-    fileObject = open(res_dir + 'parameters.json', 'w')
-    fileObject.write(para)
-    fileObject.close()
+    
+    
+    writer.save()
+    
+    
+    
+    

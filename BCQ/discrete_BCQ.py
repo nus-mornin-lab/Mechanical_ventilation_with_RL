@@ -32,7 +32,7 @@ class discrete_BCQ(object):
         num_actions,
         state_dim,
         device,
-        BCQ_threshold=0.3,
+        BCQ_threshold=0.1,
         discount=0.99,
         optimizer="Adam",
         optimizer_parameters={},
@@ -76,7 +76,10 @@ class discrete_BCQ(object):
         self.iterations = 0
         
         self.loss = []
-
+        self.q_loss = []
+        self.i_loss = []
+        self.i2_loss = []
+        self.pretrain_loss = []
 
     def select_action_new(self, state, eval=False):
         # changed here
@@ -86,12 +89,6 @@ class discrete_BCQ(object):
             imt = imt.exp()
             imt = (imt/imt.max(1, keepdim=True)[0] > self.threshold).float()
             # Use large negative number to mask actions from argmax
-            
-            # print((1. - imt) * -1e8)
-            # print(imt * q)
-            # print(imt * q + (1. - imt) * -1e8)
-            # print((imt * q + (1. - imt) * -1e8).argmax(1))
-            # print(int((imt * q + (1. - imt) * -1e8).argmax(1)))
             if torch.cuda.is_available():
                 return q.cpu().numpy(), (imt * q + (1. - imt) * -1e8).argmax(1).cpu().numpy()
             else:
@@ -100,7 +97,7 @@ class discrete_BCQ(object):
 
     def train(self, replay_buffer):
         # Sample replay buffer
-        state, action, next_state, reward, done = replay_buffer.sample()
+        state, action, next_state, reward, not_done = replay_buffer.sample()
 
         # Compute the target Q value
         with torch.no_grad():
@@ -112,7 +109,7 @@ class discrete_BCQ(object):
             next_action = (imt * q + (1 - imt) * -1e8).argmax(1, keepdim=True)
 
             q, imt, i = self.Q_target(next_state)
-            target_Q = reward + done * self.discount * q.gather(1, next_action).reshape(-1, 1)
+            target_Q = reward + not_done * self.discount * q.gather(1, next_action).reshape(-1, 1)
 
         # Get current Q estimate
         current_Q, imt, i = self.Q(state)
@@ -133,6 +130,31 @@ class discrete_BCQ(object):
         self.iterations += 1
         self.maybe_update_target()
         self.loss.append(Q_loss)
+        self.q_loss.append(q_loss)
+        self.i_loss.append(i_loss)
+        self.i2_loss.append(1e-2 * i.pow(2).mean())
+
+    def pretrain(self, replay_buffer):
+        # Sample replay buffer
+        state, action, next_state, reward, not_done = replay_buffer.sample()
+
+        # Get current Q estimate
+        Q, imt, i = self.Q(state)
+        # current_Q = current_Q.gather(1, action)
+
+        # Compute Q loss
+        # q_loss = F.nll_loss(F.log_softmax(Q, dim=1), action.reshape(-1))
+        i_loss = F.nll_loss(imt, action.reshape(-1))
+
+        Q_loss = i_loss
+
+        # Optimize the Q
+        self.Q_optimizer.zero_grad()
+        Q_loss.backward()
+        self.Q_optimizer.step()
+
+        # Update target network by polyak or full copy every X iterations.
+        self.pretrain_loss.append(Q_loss)
 
 
     def polyak_target_update(self):
